@@ -1,0 +1,64 @@
+# Mapping between Wind export column headers and internal series_id.
+# The importer only understands files through this mapping - the calculation
+# engine never sees Wind field names.
+#
+# To support a new Wind export layout, add entries here; do not touch core code.
+
+date_column: Date
+
+columns:
+  PMI:
+    series_id: CN_PMI
+    category: macro
+    frequency: monthly
+    unit: index
+    name: 中国制造业PMI
+
+  "CPI:同比":
+    series_id: CN_CPI_YOY
+    category: macro
+    frequency: monthly
+    unit: percent
+    name: CPI同比
+
+  "M2:同比":
+    series_id: CN_M2_YOY
+    category: macro
+    frequency: monthly
+    unit: percent
+    name: M2同比
+
+  "中债国债收益率:10年":
+    series_id: CN_GOV_YIELD_10Y
+    category: macro
+    frequency: monthly
+    unit: percent
+    name: 10年期国债收益率
+
+  "信用利差:AA+产业3年":
+    series_id: CN_CREDIT_SPREAD
+    category: macro
+    frequency: monthly
+    unit: bp
+    name: 信用利差(AA+产业3年)
+
+  "美元兑人民币:中间价":
+    series_id: USD_CNY
+    category: macro
+    frequency: monthly
+    unit: cny_per_usd
+    name: 美元兑人民币
+
+  "沪深300":
+    series_id: CSI300
+    category: market
+    frequency: monthly
+    unit: index
+    name: 沪深300
+
+  "黄金现货:SHTAU":
+    series_id: GOLD
+    category: market
+    frequency: monthly
+    unit: usd_per_oz
+    name: 黄金现货

@@ -1,0 +1,203 @@
+# Indicator registry.
+# series_id is the internal unique id; Wind column names are handled by the
+# importer mapping layer (wind_mapping.yaml) and never leak into the engine.
+#
+# NOTE: transforms/direction are declared here for forward compatibility with
+# V1.5 (Macro Monitor); V0/V1 only validate and store them.
+#
+# All fixture data behind these ids is SYNTHETIC until real Wind data is imported.
+
+CN_PMI:
+  name: 中国制造业PMI
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+  transform:
+    - type: level_gap
+      reference: 50
+
+CN_CPI_YOY:
+  name: CPI同比
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+  transform:
+    - type: zscore
+      window: 60
+
+CN_M2_YOY:
+  name: M2同比
+  category: macro
+  factor: liquidity
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+  transform:
+    - type: zscore
+      window: 60
+
+CN_GOV_YIELD_10Y:
+  name: 10年期国债收益率
+  category: macro
+  factor: rates
+  frequency: daily
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_CREDIT_SPREAD:
+  name: 信用利差(AA+产业3年)
+  category: macro
+  factor: credit
+  frequency: monthly
+  unit: bp
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+USD_CNY:
+  name: 美元兑人民币
+  category: macro
+  factor: fx
+  frequency: daily
+  unit: cny_per_usd
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+CSI300:
+  name: 沪深300
+  category: market
+  frequency: daily
+  unit: index
+  enabled: true
+
+GOLD:
+  name: 黄金现货
+  category: market
+  frequency: monthly
+  unit: usd_per_oz
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# V1.2 Multi-Source Acquisition: series fetched by public data providers.
+# Routing (provider, code, staleness) lives in config/data_sources.yaml.
+# ---------------------------------------------------------------------------
+
+CHN_CLI:
+  name: 中国CLI领先指标
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CHN_CPI_INDEX:
+  name: 中国CPI指数(OECD)
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CHN_IND_PROD_INDEX:
+  name: 中国工业生产指数(OECD)
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CHN_RETAIL_SALES_INDEX:
+  name: 中国社会消费品零售指数(OECD)
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CHN_EXPORT_YOY:
+  name: 中国出口同比(OECD)
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CHN_PMI_NEW_ORDERS:
+  name: 中国制造业PMI新订单
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_LPR_1Y:
+  name: 1年期LPR
+  category: macro
+  factor: rates
+  frequency: monthly
+  unit: percent
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+US_REAL_YIELD_10Y:
+  name: 美国10年期实际利率
+  category: macro
+  factor: rates
+  frequency: daily
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+USD_BROAD:
+  name: 美元广义指数
+  category: macro
+  factor: fx
+  frequency: daily
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+ANFCI:
+  name: 芝加哥联储调整后金融状况指数
+  category: macro
+  factor: liquidity
+  frequency: weekly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+US_SOFR:
+  name: SOFR担保隔夜融资利率
+  category: market
+  frequency: daily
+  unit: percent
+  enabled: true

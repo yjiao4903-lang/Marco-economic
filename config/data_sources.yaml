@@ -1,0 +1,211 @@
+# V1.2 Source Registry - which provider serves which series.
+#
+# Every series listed here MUST be registered in config/indicators.yaml;
+# canonical metadata (name/unit/frequency/category) comes from that registry.
+#
+# provider_code meanings per provider:
+#   fred        - FRED series id (DFII10, DTWEXBGS, ANFCI, ...)
+#   oecd        - "<flowRef>/<sdmx key>" string
+#   chinamoney  - currency pair as the API names it (USD/CNY)
+#   chinabond   - curve term label (10 = 10-year CGB point)
+#   akshare     - instrument code for index_zh_a_hist (000300 = CSI300)
+#   nyfed       - rate type (SOFR)
+#   pbc         - LPR_1Y / LPR_5Y
+#   safe        - currency name in the parity table (美元)
+#   chicagofed  - index column name (ANFCI / NFCI)
+#   wind_manual - unused; the series can only be updated via Wind export
+
+defaults:
+  overlap_days: 45   # incremental fetches re-pull this many days before the
+                     # last stored observation to pick up revisions
+
+providers:
+  fred:
+    module: fred
+    adapter_class: FredAdapter
+    timeout_seconds: 45
+  oecd:
+    module: oecd
+    adapter_class: OecdAdapter
+    timeout_seconds: 60
+  chinamoney:
+    module: chinamoney
+    adapter_class: ChinaMoneyAdapter
+    timeout_seconds: 30
+  chinabond:
+    module: chinabond
+    adapter_class: ChinaBondAdapter
+    timeout_seconds: 30
+  akshare:
+    module: akshare_source
+    adapter_class: AkshareAdapter
+    timeout_seconds: 60
+  nyfed:
+    module: nyfed
+    adapter_class: NyFedAdapter
+    timeout_seconds: 30
+  pbc:
+    module: pbc
+    adapter_class: PbcAdapter
+    timeout_seconds: 30
+  safe:
+    module: safe
+    adapter_class: SafeAdapter
+    timeout_seconds: 30
+  chicagofed:
+    module: chicagofed
+    adapter_class: ChicagoFedAdapter
+    timeout_seconds: 45
+    # options:
+    #   url: <weekly NFCI/ANFCI csv download url - changes often, set manually>
+  wind_manual:
+    module: wind_manual
+    adapter_class: WindManualAdapter
+
+series:
+  # --- OECD (V1.2A Batch A chain: CLI / CPI / production / retail / exports)
+  CHN_CLI:
+    primary: oecd
+    provider_code: "OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/CHN.M.LI.IX._T.AA."
+    frequency: monthly
+    category: macro
+    max_staleness_days: 90
+    original_source: OECD Composite Leading Indicators (CLI), China
+
+  CHN_CPI_INDEX:
+    primary: oecd
+    provider_code: "OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/CHN.M.CP.IX._Z._Z."
+    frequency: monthly
+    category: macro
+    max_staleness_days: 90
+    original_source: OECD Main Economic Indicators, China CPI index
+
+  CHN_IND_PROD_INDEX:
+    primary: oecd
+    provider_code: "OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/CHN.M.PRVM.IX.F.Y."
+    frequency: monthly
+    category: macro
+    max_staleness_days: 90
+    original_source: OECD Main Economic Indicators, China industrial production
+
+  CHN_RETAIL_SALES_INDEX:
+    primary: oecd
+    provider_code: "OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/CHN.M.RS.IX._T.RT."
+    frequency: monthly
+    category: macro
+    max_staleness_days: 90
+    original_source: OECD Main Economic Indicators, China retail sales volume
+
+  CHN_EXPORT_YOY:
+    primary: oecd
+    provider_code: "OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/CHN.M.EX.GR._T.Y."
+    frequency: monthly
+    category: macro
+    max_staleness_days: 90
+    original_source: OECD Main Economic Indicators, China export growth
+
+  # --- ChinaMoney (V1.2A)
+  USD_CNY:
+    primary: chinamoney
+    fallback: wind_manual
+    provider_code: "USD/CNY"
+    frequency: daily
+    category: macro
+    max_staleness_days: 7
+    original_source: CFETS central parity via ChinaMoney
+    manual_instructions: >
+      Export the USD/CNY central parity from Wind to data/inbox/wind/ and run
+      python scripts/import_wind.py <file> (column registered as 美元兑人民币:中间价)
+
+  # --- ChinaBond (V1.2A; token-guarded endpoint, may degrade to manual)
+  CN_GOV_YIELD_10Y:
+    primary: chinabond
+    fallback: wind_manual
+    provider_code: "10"
+    frequency: daily
+    category: macro
+    max_staleness_days: 7
+    original_source: ChinaBond 10Y CGB yield curve
+    manual_instructions: >
+      Export the 10Y CGB yield from Wind (中债国债收益率:10年) to data/inbox/wind/
+      and run python scripts/import_wind.py <file>
+
+  # --- AKShare (V1.2A; optional dependency, MANUAL_REQUIRED when missing)
+  CSI300:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "000300"
+    frequency: daily
+    category: market
+    max_staleness_days: 7
+    original_source: CSI300 index via AKShare
+    manual_instructions: >
+      Export CSI300 closes from Wind to data/inbox/wind/ and run
+      python scripts/import_wind.py <file>
+
+  # --- NY Fed (V1.2B)
+  US_SOFR:
+    primary: nyfed
+    provider_code: "SOFR"
+    frequency: daily
+    category: market
+    max_staleness_days: 7
+    original_source: New York Fed secured overnight financing rate
+
+  # --- Chicago Fed + FRED (V1.2B / V1.2A)
+  ANFCI:
+    primary: chicagofed
+    fallback: fred
+    provider_code: "ANFCI"
+    fallback_code: "ANFCI"
+    frequency: weekly
+    category: macro
+    max_staleness_days: 21
+    original_source: Chicago Fed Adjusted National Financial Conditions Index
+
+  # --- FRED (V1.2A)
+  US_REAL_YIELD_10Y:
+    primary: fred
+    fallback: wind_manual
+    provider_code: "DFII10"
+    frequency: daily
+    category: macro
+    max_staleness_days: 14
+    original_source: US Treasury 10Y TIPS yield via FRED
+    manual_instructions: >
+      Download DFII10 from fred.stlouisfed.org (CSV) or export from Wind and
+      run python scripts/import_wind.py <file>
+
+  USD_BROAD:
+    primary: fred
+    fallback: wind_manual
+    provider_code: "DTWEXBGS"
+    frequency: daily
+    category: macro
+    max_staleness_days: 14
+    original_source: Fed broad trade-weighted USD index via FRED
+    manual_instructions: >
+      Download DTWEXBGS from fred.stlouisfed.org (CSV) or export from Wind and
+      run python scripts/import_wind.py <file>
+
+  # --- PBOC (V1.2B)
+  CN_LPR_1Y:
+    primary: pbc
+    provider_code: "LPR_1Y"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    original_source: PBOC monthly LPR announcement
+
+  # --- Wind-only series (manual by definition)
+  CHN_PMI_NEW_ORDERS:
+    primary: wind_manual
+    provider_code: ""
+    frequency: monthly
+    category: macro
+    max_staleness_days: 60
+    original_source: NBS manufacturing PMI new orders via Wind
+    manual_instructions: >
+      Export PMI new orders (PMI:新订单) from Wind to data/inbox/wind/, add the
+      column to config/wind_mapping.yaml, then run
+      python scripts/import_wind.py <file>

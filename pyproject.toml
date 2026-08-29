@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "macro-compass"
+version = "0.3.0"
+description = "Personal Macro Asset Compass - lightweight local macro monitoring and asset direction system"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas",
+    "numpy",
+    "duckdb",
+    "openpyxl",
+    "pyyaml",
+    "pydantic",
+    "pyarrow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not network'"
+markers = [
+    "network: tests that hit real network endpoints (opt in with -m network)",
+]
