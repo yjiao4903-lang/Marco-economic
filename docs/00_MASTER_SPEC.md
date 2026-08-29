@@ -250,12 +250,20 @@ V1.3      Signal Registry
 V1.5A     Transform Engine
 V1.5B     Signal Engine
 V1.5C     Macro Factor Engine
-V1.6      Market Confirmation + Structural Risk
+V1.2C     Data Coverage Hardening          ← 2026-08-29 负责人批准插入
+V1.5D     Signal Quality Gate              ← 2026-08-29 负责人批准插入
+V1.6A     Market Confirmation              ← V1.6 拆分，Structural Risk 后移
 V2        Asset Compass
 V2.5      Historical Validation
+V2.6      Structural Risk                  ← 原 V1.6 的一部分，后移
 V3        Local Dashboard
 V4        Cloud Mirror
 V5        Optional Research
 ```
 
 未经用户明确批准，不应跳版本。
+
+> 修订记录（2026-08-29，经项目负责人评审批准）：原计划 V1.6（Market Confirmation +
+> Structural Risk）+ V2 之前插入 V1.2C + V1.5D 两个数据质量 Gate；Structural Risk 从
+> V1.6 后移至 V2.6（其不进入短期 Asset Score，不应因 BIS 数据阻塞 V2）。任务书见
+> `docs/tasks/45_V1_2C_V1_5D_DATA_QUALITY_GATES.md`。
