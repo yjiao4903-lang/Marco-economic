@@ -215,11 +215,13 @@ python -m pytest -m network
 
 ## 7. 下一任务
 
-> V1.2C Data Coverage Hardening + V1.5D Signal Quality Gate（Gate A/B，原 Window C 继续，
-> 见 docs/tasks/45_V1_2C_V1_5D_DATA_QUALITY_GATES.md）
+> V1.5E / v0.4c Pre-Market Stabilization（原开发窗口继续，
+> 见 docs/tasks/47_V1_5E_V0_4C_PRE_MARKET_STABILIZATION.md）
 >
-> 路线图变更（项目负责人 2026-08-29 批准）：V1.6+V2 暂缓，先补真实数据覆盖与信号质量；
-> 完成后进入 V1.6A Market Confirmation → V2 Asset Compass，Structural Risk 后移为 V2.6。
+> 路线图变更（项目负责人 2026-08-30 批准）：V1.6A 之前插入 v0.4c 数据稳定短版本
+> （I1/X1/X2 双源化、D2/D4 Wind 一次性回填、G3 换活源、状态语义修复、饱和度评审）；
+> 完成后冻结 Fundamental Core，进入 V1.6A（仅 Market Confirmation，独立窗口）→
+> R2 资产先验矩阵调研（并行）→ V2 Asset Compass（独立窗口）。
 
 ## 8. 窗口交接记录（2026-08-29 V1.5B+V1.5C）
 

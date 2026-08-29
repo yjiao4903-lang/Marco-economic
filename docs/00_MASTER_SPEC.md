@@ -252,8 +252,9 @@ V1.5B     Signal Engine
 V1.5C     Macro Factor Engine
 V1.2C     Data Coverage Hardening          ← 2026-08-29 负责人批准插入
 V1.5D     Signal Quality Gate              ← 2026-08-29 负责人批准插入
+V1.5E     Pre-Market Stabilization         ← 2026-08-30 负责人批准插入（v0.4c）
 V1.6A     Market Confirmation              ← V1.6 拆分，Structural Risk 后移
-V2        Asset Compass
+V2        Asset Compass（前置：R2 先验矩阵调研）
 V2.5      Historical Validation
 V2.6      Structural Risk                  ← 原 V1.6 的一部分，后移
 V3        Local Dashboard
