@@ -29,6 +29,7 @@ MARKET_PARQUET = CANONICAL_MARKET_DIR / "market.parquet"
 INDICATORS_YAML = CONFIG_DIR / "indicators.yaml"
 WIND_MAPPING_YAML = CONFIG_DIR / "wind_mapping.yaml"
 DATA_SOURCES_YAML = CONFIG_DIR / "data_sources.yaml"
+SIGNALS_YAML = CONFIG_DIR / "signals.yaml"
 
 # V1.2 multi-source acquisition state and status outputs. All operational
 # state lives under data/local/ (git-ignored, safe to delete - it is rebuilt
@@ -36,5 +37,6 @@ DATA_SOURCES_YAML = CONFIG_DIR / "data_sources.yaml"
 FETCH_STATE_PATH = LOCAL_DIR / "fetch_state.json"
 DATA_STATUS_CSV = LOCAL_DIR / "data_status.csv"
 MANUAL_FETCH_CSV = LOCAL_DIR / "manual_fetch_required.csv"
+MISSING_SERIES_CSV = LOCAL_DIR / "missing_series.csv"
 
 LOGS_DIR = PROJECT_ROOT / "logs"

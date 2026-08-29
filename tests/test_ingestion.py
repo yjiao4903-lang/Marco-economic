@@ -45,7 +45,7 @@ def test_load_indicator_config_returns_registered_series():
     assert pmi.frequency == "monthly"
     assert pmi.direction == "positive"
     assert pmi.weight == 1.0
-    assert pmi.transform[0].type == "level_gap"
+    assert pmi.transform[0].type == "neutral_gap"
 
 
 def test_load_indicator_config_missing_required_field(tmp_path: Path):

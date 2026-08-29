@@ -4,6 +4,13 @@
 #
 # NOTE: transforms/direction are declared here for forward compatibility with
 # V1.5 (Macro Monitor); V0/V1 only validate and store them.
+# V1.3 migration: transform names unified to the V1.5A whitelist
+# (level_gap -> neutral_gap, zscore -> robust_zscore); series feeding Core
+# Signals remapped to the MASTER SPEC factors (growth / inflation /
+# domestic_financial / global_financial). The legacy tags rates / credit / fx
+# stay valid for series that only feed the Market Confirmation layer (M1-M6).
+# Series added for the V1.3 signal registry are metadata-only registrations:
+# they have no provider routing and no data yet (see signals availability).
 #
 # All fixture data behind these ids is SYNTHETIC until real Wind data is imported.
 
@@ -17,7 +24,7 @@ CN_PMI:
   weight: 1.0
   enabled: true
   transform:
-    - type: level_gap
+    - type: neutral_gap
       reference: 50
 
 CN_CPI_YOY:
@@ -30,20 +37,20 @@ CN_CPI_YOY:
   weight: 1.0
   enabled: true
   transform:
-    - type: zscore
+    - type: robust_zscore
       window: 60
 
 CN_M2_YOY:
   name: M2同比
   category: macro
-  factor: liquidity
+  factor: domestic_financial
   frequency: monthly
   unit: percent
   direction: positive
   weight: 1.0
   enabled: true
   transform:
-    - type: zscore
+    - type: robust_zscore
       window: 60
 
 CN_GOV_YIELD_10Y:
@@ -158,7 +165,7 @@ CHN_PMI_NEW_ORDERS:
 CN_LPR_1Y:
   name: 1年期LPR
   category: macro
-  factor: rates
+  factor: domestic_financial
   frequency: monthly
   unit: percent
   direction: negative
@@ -168,7 +175,7 @@ CN_LPR_1Y:
 US_REAL_YIELD_10Y:
   name: 美国10年期实际利率
   category: macro
-  factor: rates
+  factor: global_financial
   frequency: daily
   unit: percent
   direction: positive
@@ -178,7 +185,7 @@ US_REAL_YIELD_10Y:
 USD_BROAD:
   name: 美元广义指数
   category: macro
-  factor: fx
+  factor: global_financial
   frequency: daily
   unit: index
   direction: positive
@@ -188,7 +195,7 @@ USD_BROAD:
 ANFCI:
   name: 芝加哥联储调整后金融状况指数
   category: macro
-  factor: liquidity
+  factor: global_financial
   frequency: weekly
   unit: index
   direction: positive
@@ -200,4 +207,166 @@ US_SOFR:
   category: market
   frequency: daily
   unit: percent
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# V1.3 Signal Registry: input series referenced by config/signals.yaml that
+# have no data in canonical yet. Metadata-only registration (V1.2 rule: every
+# signals.yaml series_id must exist here); no provider routing is added for
+# them - acquisition comes later via V1.2 extension or manual fetch, so the
+# affected signals report MISSING_INPUT until then.
+# ---------------------------------------------------------------------------
+
+CN_PROPERTY_SALES_AREA:
+  name: 商品房销售面积同比
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_PROPERTY_SALES_VALUE:
+  name: 商品房销售额同比
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_CORE_CPI_YOY:
+  name: 核心CPI同比
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_PPI_YOY:
+  name: PPI同比
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CHN_PMI_INPUT_PRICE:
+  name: 制造业PMI主要原材料购进价格
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+US_GSCPI:
+  name: 全球供应链压力指数
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_DR007:
+  name: 银行间存款类机构7天回购利率
+  category: macro
+  factor: domestic_financial
+  frequency: daily
+  unit: percent
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+CN_POLICY_RATE_7D:
+  name: 7天逆回购政策利率
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: percent
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+CN_TSF_TOTAL:
+  name: 社会融资规模增量
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: bn_cny
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_GOV_BOND_FINANCING:
+  name: 社融中的政府债券融资
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: bn_cny
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_PRIVATE_TSF_YOY:
+  name: 私人部门社融同比
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+HSI:
+  name: 恒生指数
+  category: market
+  frequency: daily
+  unit: index
+  enabled: true
+
+CN_AAA_CREDIT_SPREAD:
+  name: 信用利差(AAA产业)
+  category: macro
+  factor: credit
+  frequency: monthly
+  unit: bp
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+COPPER_PRICE:
+  name: 铜价(工业商品代理)
+  category: market
+  frequency: daily
+  unit: usd_per_ton
+  enabled: true
+
+CN_CREDIT_TO_GDP_GAP:
+  name: 信贷/GDP缺口
+  category: macro
+  factor: credit
+  frequency: quarterly
+  unit: percent
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+CN_DSR:
+  name: 债务偿付比率
+  category: macro
+  factor: domestic_financial
+  frequency: quarterly
+  unit: percent
+  direction: negative
+  weight: 1.0
   enabled: true

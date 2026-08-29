@@ -3,9 +3,10 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V1.2 Multi-Source Acquisition**（多源数据获取）。
+> 当前开发阶段：**V1.3 Signal Registry + V1.5A Transform Engine**（V0/V1/V1.2 已冻结）。
 > 数据层已支持公共数据源（FRED/OECD/ChinaMoney/NY Fed/PBOC 等）自动获取；
-> 宏观因子（V1.5）、资产评分（V2）、Dashboard（V3）尚未开发。
+> 信号注册（15+6+3）与变换引擎（12 种纯函数白名单）已就绪；
+> 信号打分聚合（V1.5B/V1.5C）、资产评分（V2）、Dashboard（V3）尚未开发。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据。
 
 ## 目录结构
@@ -70,6 +71,13 @@ python scripts/update_sources.py                 # 增量更新全部序列
 python scripts/update_sources.py --dry-run       # 只抓取并报告，不写库
 python scripts/update_sources.py --series USD_CNY --series CHN_CLI
 python scripts/update_sources.py --backfill      # 忽略状态，抓全历史
+
+# V1.3 信号注册状态：逐信号输入可用性 + 缺失序列清单
+python scripts/signal_status.py                  # 写 data/local/missing_series.csv
+
+# V1.5A 变换引擎 smoke：对一条真实 canonical 序列跑声明的变换链（只读）
+python scripts/transform_smoke.py                # G1 链跑 CHN_CLI
+python scripts/transform_smoke.py --signal I1 --rows 10
 
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest

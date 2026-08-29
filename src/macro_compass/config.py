@@ -12,9 +12,15 @@ from typing import Literal, Optional
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-FACTORS = ("growth", "inflation", "rates", "credit", "liquidity", "fx")
+# V1.3: the four MASTER SPEC signal factors come first; the legacy V0 tags
+# (rates/credit/liquidity/fx) stay valid for series that only feed the Market
+# Confirmation layer, which MASTER SPEC does not classify into the four core
+# factors.
+CORE_FACTORS = ("growth", "inflation", "domestic_financial", "global_financial")
+LEGACY_FACTORS = ("rates", "credit", "liquidity", "fx")
+FACTORS = CORE_FACTORS + LEGACY_FACTORS
 DIRECTIONS = ("positive", "negative")
-FREQUENCIES = ("monthly", "weekly", "daily")
+FREQUENCIES = ("monthly", "weekly", "daily", "quarterly")
 CATEGORIES = ("macro", "market")
 
 
@@ -36,8 +42,19 @@ class IndicatorConfig(BaseModel):
 
     name: str
     category: Literal["macro", "market"] = "macro"
-    factor: Optional[Literal["growth", "inflation", "rates", "credit", "liquidity", "fx"]] = None
-    frequency: Literal["monthly", "weekly", "daily"]
+    factor: Optional[
+        Literal[
+            "growth",
+            "inflation",
+            "domestic_financial",
+            "global_financial",
+            "rates",
+            "credit",
+            "liquidity",
+            "fx",
+        ]
+    ] = None
+    frequency: Literal["monthly", "weekly", "daily", "quarterly"]
     unit: str
     direction: Optional[Literal["positive", "negative"]] = None
     weight: float = Field(default=1.0, gt=0)

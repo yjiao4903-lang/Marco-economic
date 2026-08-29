@@ -1,0 +1,478 @@
+# V1.3 Signal Registry - declaration of the 15+6+3 signal catalogue.
+#
+# Scope: registration + declarative transform chains ONLY. No scoring and no
+# aggregation is implemented here:
+#   - Level/momentum scoring, composite combination and contribution breakdown
+#     arrive with V1.5B (Signal Engine).
+#   - Market Confirmation (M1-M6) and Structural Risk (S1-S3) entries are
+#     layer placeholders; their engines arrive with V1.6.
+#
+# Semantics:
+#   signal_id          MASTER SPEC code (G1..G5, I1..I3, D1..D4, X1..X3, M1..M6, S1..S3)
+#   name               human-readable name
+#   layer              core | market | structural
+#   mechanism          the economic mechanism this signal represents; this is the
+#                      admission ticket for a Core Signal (MASTER SPEC section 3)
+#   factor             MASTER SPEC factor for core signals:
+#                      growth | inflation | domestic_financial | global_financial
+#   inputs             series_id + role. series metadata (name/unit/frequency)
+#                      lives ONLY in config/indicators.yaml; entries here are
+#                      references, never copies. Availability is assessed at
+#                      runtime against canonical data (READY / PARTIAL /
+#                      MISSING_INPUT / DECLARED).
+#   transforms         ordered chain of V1.5A-whitelisted transform steps,
+#                      applied per input series. For signals with
+#                      `combination`, the chain applies to the combined
+#                      composite (combination itself is a V1.5B concern).
+#   momentum_transform single whitelisted step producing the momentum basis.
+#   neutral            neutral anchor of the signal's level basis (the chain
+#                      output): 0 for gap/yoy representations, 0.5 for
+#                      percentile representations.
+#   direction          economic direction of "improvement": positive | negative
+#   level_weight / momentum_weight   scoring weights consumed by V1.5B.
+#
+# Transform whitelist (implemented in src/macro_compass/transforms/):
+#   level, delta, pct_change, yoy, mom, moving_average, rolling_percentile,
+#   robust_zscore, neutral_gap, rolling_sum, rolling_mean, acceleration
+
+version: 1
+
+signals:
+
+  # ------------------------------------------------------------------ Growth
+  G1:
+    name: China CLI
+    layer: core
+    factor: growth
+    mechanism: >
+      OECD composite leading indicator anticipates turning points of the
+      Chinese business cycle; deviations from 100 measure growth momentum
+      ahead of coincident hard data.
+    inputs:
+      - series_id: CHN_CLI
+        role: level
+    transforms:
+      - type: neutral_gap
+        reference: 100
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  G2:
+    name: PMI New Orders
+    layer: core
+    factor: growth
+    mechanism: >
+      New-orders subindex of the NBS manufacturing PMI captures forward-looking
+      domestic manufacturing demand; the gap above/below 50 is the expansion
+      signal.
+    inputs:
+      - series_id: CHN_PMI_NEW_ORDERS
+        role: level
+    transforms:
+      - type: neutral_gap
+        reference: 50
+    momentum_transform:
+      type: delta
+      periods: 1
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  G3:
+    name: Hard Activity Composite
+    layer: core
+    factor: growth
+    mechanism: >
+      Industrial production and retail sales volume move together with the
+      contemporaneous business cycle; combined they separate real supply-side
+      and consumption-driven activity from survey noise.
+    inputs:
+      - series_id: CHN_IND_PROD_INDEX
+        role: component
+      - series_id: CHN_RETAIL_SALES_INDEX
+        role: component
+    transforms:
+      - type: yoy
+        periods: 12
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  G4:
+    name: Property Demand Composite
+    layer: core
+    factor: growth
+    mechanism: >
+      Commodity housing sales area and sales value measure the single largest
+      domestic demand channel; their joint direction leads construction,
+      durable goods and local fiscal revenue.
+    inputs:
+      - series_id: CN_PROPERTY_SALES_AREA
+        role: component
+      - series_id: CN_PROPERTY_SALES_VALUE
+        role: component
+    transforms:
+      - type: level
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  G5:
+    name: Export Demand
+    layer: core
+    factor: growth
+    mechanism: >
+      Export year-over-year growth transmits external demand into Chinese
+      manufacturing activity and employment, an independent mechanism from
+      domestic demand.
+    inputs:
+      - series_id: CHN_EXPORT_YOY
+        role: level
+    transforms:
+      - type: level
+    momentum_transform:
+      type: delta
+      periods: 1
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  # --------------------------------------------------------------- Inflation
+  I1:
+    name: Consumer Inflation
+    layer: core
+    factor: inflation
+    mechanism: >
+      Consumer price momentum captures end-demand pressure. Core CPI is
+      preferred because it strips food/energy noise; headline CPI is the
+      explicit fallback when core is unavailable.
+    inputs:
+      - series_id: CN_CORE_CPI_YOY
+        role: preferred
+      - series_id: CN_CPI_YOY
+        role: fallback
+    transforms:
+      - type: rolling_percentile
+        window: 60
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0.5
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  I2:
+    name: Industrial Inflation
+    layer: core
+    factor: inflation
+    mechanism: >
+      PPI captures upstream price pressure and the pricing power of industrial
+      producers, a distinct mechanism from consumer inflation driven by
+      commodity and capacity cycles.
+    inputs:
+      - series_id: CN_PPI_YOY
+        role: level
+    transforms:
+      - type: rolling_percentile
+        window: 60
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0.5
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  I3:
+    name: Cost Pressure Composite
+    layer: core
+    factor: inflation
+    mechanism: >
+      PMI input-price subindex (domestic pipeline) and GSCPI (global supply
+      chain pressure) jointly measure cost-push pressure arriving at Chinese
+      producers from two independent channels.
+    inputs:
+      - series_id: CHN_PMI_INPUT_PRICE
+        role: component
+      - series_id: US_GSCPI
+        role: component
+    transforms:
+      - type: rolling_percentile
+        window: 60
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0.5
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  # ---------------------------------------------- Domestic Financial / Policy
+  D1:
+    name: Funding Condition
+    layer: core
+    factor: domestic_financial
+    mechanism: >
+      The DR007 minus 7-day policy rate spread measures how far actual
+      interbank funding cost deviates from the policy anchor: positive spread
+      means tight funding, negative means abundant liquidity.
+    inputs:
+      - series_id: CN_DR007
+        role: spread_leg
+      - series_id: CN_POLICY_RATE_7D
+        role: spread_leg
+    combination: difference   # DR007 - policy rate; combined in V1.5B
+    transforms:
+      - type: rolling_percentile
+        window: 250
+    momentum_transform:
+      type: delta
+      periods: 21
+    direction: negative
+    neutral: 0.5
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  D2:
+    name: Private Credit Impulse
+    layer: core
+    factor: domestic_financial
+    mechanism: >
+      Total social financing minus government bond financing isolates
+      private-sector credit demand; its growth is the domestic credit impulse
+      that leads real activity.
+    inputs:
+      - series_id: CN_TSF_TOTAL
+        role: spread_leg
+      - series_id: CN_GOV_BOND_FINANCING
+        role: spread_leg
+    combination: difference   # TSF total - government bond financing; V1.5B
+    transforms:
+      - type: yoy
+        periods: 12
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  D3:
+    name: Excess Liquidity
+    layer: core
+    factor: domestic_financial
+    mechanism: >
+      M2 growth in excess of private credit growth measures money created
+      beyond real credit demand - the liquidity overhang available to financial
+      assets.
+    inputs:
+      - series_id: CN_M2_YOY
+        role: spread_leg
+      - series_id: CN_PRIVATE_TSF_YOY
+        role: spread_leg
+    combination: difference   # M2 YoY - private TSF YoY; combined in V1.5B
+    transforms:
+      - type: level
+    momentum_transform:
+      type: delta
+      periods: 1
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  D4:
+    name: Fiscal Support
+    layer: core
+    factor: domestic_financial
+    mechanism: >
+      Government bond financing growth is the fiscal impulse: how actively the
+      government leverages to support demand, independent of private credit.
+    inputs:
+      - series_id: CN_GOV_BOND_FINANCING
+        role: level
+    transforms:
+      - type: yoy
+        periods: 12
+    momentum_transform:
+      type: delta
+      periods: 3
+    direction: positive
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  # --------------------------------------------- Global Financial Conditions
+  X1:
+    name: US 10Y Real Yield
+    layer: core
+    factor: global_financial
+    mechanism: >
+      The US 10-year TIPS yield is the global discount-rate anchor; rising
+      real yields tighten global financial conditions and pressure duration
+      and precious-metal assets everywhere.
+    inputs:
+      - series_id: US_REAL_YIELD_10Y
+        role: level
+    transforms:
+      - type: rolling_percentile
+        window: 250
+    momentum_transform:
+      type: delta
+      periods: 63
+    direction: negative
+    neutral: 0.5
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  X2:
+    name: Broad USD
+    layer: core
+    factor: global_financial
+    mechanism: >
+      The trade-weighted broad dollar index measures global dollar liquidity;
+      a strengthening dollar tightens financing conditions for emerging markets
+      and weighs on commodities.
+    inputs:
+      - series_id: USD_BROAD
+        role: level
+    transforms:
+      - type: rolling_percentile
+        window: 250
+    momentum_transform:
+      type: delta
+      periods: 63
+    direction: negative
+    neutral: 0.5
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  X3:
+    name: ANFCI
+    layer: core
+    factor: global_financial
+    mechanism: >
+      The Chicago Fed Adjusted National Financial Conditions Index measures US
+      financial conditions relative to trend, with the noise/volatility
+      component removed; positive readings are tighter-than-average conditions.
+    inputs:
+      - series_id: ANFCI
+        role: level
+    transforms:
+      - type: robust_zscore
+        window: 156
+    momentum_transform:
+      type: delta
+      periods: 13
+    direction: negative
+    neutral: 0
+    level_weight: 0.5
+    momentum_weight: 0.5
+
+  # --------------------------------- Market Confirmation (placeholders, V1.6)
+  M1:
+    name: CSI 300
+    layer: market
+    mechanism: >
+      Onshore equity benchmark; confirms or contradicts the fundamental growth
+      and liquidity picture. Never feeds back into Fundamental scores.
+    inputs:
+      - series_id: CSI300
+        role: confirmation
+
+  M2:
+    name: Hang Seng Index
+    layer: market
+    mechanism: >
+      Offshore Chinese equity benchmark; captures global risk appetite toward
+      China assets independently of onshore flows.
+    inputs:
+      - series_id: HSI
+        role: confirmation
+
+  M3:
+    name: China 10Y Government Yield
+    layer: market
+    mechanism: >
+      The 10Y CGB yield prices the bond market's read on growth and inflation
+      expectations, confirming the fundamental rate view.
+    inputs:
+      - series_id: CN_GOV_YIELD_10Y
+        role: confirmation
+
+  M4:
+    name: AAA Credit Spread
+    layer: market
+    mechanism: >
+      AAA corporate spread over CGB measures domestic credit risk appetite;
+      widening confirms deteriorating fundamental funding conditions.
+    inputs:
+      - series_id: CN_AAA_CREDIT_SPREAD
+        role: confirmation
+
+  M5:
+    name: USD/CNY
+    layer: market
+    mechanism: >
+      The onshore exchange rate confirms the joint read on dollar strength,
+      capital flow pressure and relative monetary stance.
+    inputs:
+      - series_id: USD_CNY
+        role: confirmation
+
+  M6:
+    name: Industrial Commodity / Copper Proxy
+    layer: market
+    mechanism: >
+      Copper prices confirm the global industrial demand and reflation read
+      with a real-money market vote.
+    inputs:
+      - series_id: COPPER_PRICE
+        role: confirmation
+
+  # --------------------------------- Structural Risk (placeholders, V1.6)
+  S1:
+    name: Credit-to-GDP Gap
+    layer: structural
+    mechanism: >
+      BIS-style credit gap measures credit expansion far above trend - the
+      classic medium-term financial vulnerability indicator. Not part of the
+      short-term Asset Score.
+    inputs:
+      - series_id: CN_CREDIT_TO_GDP_GAP
+        role: level
+
+  S2:
+    name: Debt Service Ratio
+    layer: structural
+    mechanism: >
+      The share of income used to service debt; rising DSR crowds out spending
+      and raises system fragility. Not part of the short-term Asset Score.
+    inputs:
+      - series_id: CN_DSR
+        role: level
+
+  S3:
+    name: Property Vulnerability
+    layer: structural
+    mechanism: >
+      Composite of property demand exhaustion and price stagnation measuring
+      the build-up of a property-sector tail risk. Inputs and combination are
+      finalised with the V1.6 engine; declared without inputs for now.
