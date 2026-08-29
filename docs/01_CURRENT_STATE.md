@@ -2,8 +2,8 @@
 
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
-**最后人工确认基线：** 2026-08-30（v0.5）  
-**Current Version:** V1.6A Market Confirmation（v0.5；V0–V1.5D、v0.4c 全部冻结）  
+**最后人工确认基线：** 2026-08-30（v0.4d）  
+**Current Version:** V1.6A Market Confirmation（v0.4d；V0–V1.5D、v0.4c 全部冻结）  
 **当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
 X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据，
 Market Data Matrix 见下）。G0 已完成：G3 活源切换为 NBS 增速序列（OECD 保留 fallback）。
@@ -144,7 +144,7 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
 - **P1-5 D2/D4 Wind 回填**：依赖用户导出 `wind_backfill_tsf.csv`——**文件未就绪，等待状态**
   （数据链已就绪：PBOC 增量 replace_window 正常，导入回填文件后 D2/D4 立即 WARMUP→READY）。
 
-### V1.6A Market Confirmation（v0.5）— DONE（2026-08-30，Window D1）
+### V1.6A Market Confirmation（v0.4d）— DONE（2026-08-30，Window D1，已由协调员验收）
 
 **G0：G3 活源切换（负责人 2026-08-30 批准的唯一 signals.yaml 变更）**
 - `signals.yaml` G3 inputs 改为声明优先级序列：CN_IND_PROD_YOY（NBS 工业增加值当月同比，
@@ -343,7 +343,7 @@ python -m pytest -m network
 
 > **V2 Asset Compass**（见 docs/tasks/55_V2_ASSET_COMPASS.md）。前置 Gate：
 > ① Economic Coverage Gate 完成（D2/D4 等 wind_backfill_tsf.csv、X2 等 FRED 恢复）；
-> ② V1.6A Market Confirmation PASS（已交付 v0.5，待协调员验收）；
+> ② V1.6A Market Confirmation PASS（已由协调员验收，tag v0.4d-market-confirmation）；
 > ③ R2 资产先验矩阵转写（调研已归档 docs/research/2026-08-30_R2_asset_prior_matrix.md）。
 > 三项齐备后新开窗口。V1.6A 交付内容冻结，不要在 V2 窗口改动 market 层口径。
 >
@@ -351,7 +351,7 @@ python -m pytest -m network
 > 由新协调员窗口接手，工作手册见 **docs/COORDINATOR_HANDOFF.md**（含 D1 验收
 > 程序、待办队列、55 号任务书素材与红线清单）。
 
-## 8. 窗口交接记录（2026-08-30 V1.6A / v0.5，Window D1）
+## 8. 窗口交接记录（2026-08-30 V1.6A / v0.4d，Window D1）
 
 ```text
 Last Test Result: PASS（python -m pytest，2026-08-30；-m network opt-in 6 passed 2 skipped，
@@ -359,7 +359,7 @@ Last Test Result: PASS（python -m pytest，2026-08-30；-m network opt-in 6 pas
 Last Test Count: 192 passed, 0 failed（176 基线 + 16：G0 声明/优先级/scale 锁定 3 +
   eastmoney/spread 解析器 4 + 市场约定/WARMUP/五状态/confidence/隔离 8 + 更新后的
   registry 可用性断言 1）
-Last Git Tag: v0.5-market-confirmation
+Last Git Tag: v0.4d-market-confirmation（协调员将 D1 窗口自打的 v0.5 重命名——v0.5 预留给 V2 Asset Compass，见 COORDINATOR_HANDOFF §8 第 10 步）
 Known Issues: 见第 10 节
 Modified Files: 新增 src/macro_compass/market/{__init__,config,engine}.py、
   data_sources/eastmoney.py、scripts/market_report.py、tests/test_v05a.py、
