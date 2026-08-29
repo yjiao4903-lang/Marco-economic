@@ -254,15 +254,15 @@ python -m pytest -m network
 
 ## 7. 下一任务
 
-> V1.5E / v0.4c Pre-Market Stabilization（原开发窗口继续，
-> 见 docs/tasks/47_V1_5E_V0_4C_PRE_MARKET_STABILIZATION.md）
+> V1.6A Market Confirmation（新窗口 Window D1，见 docs/tasks/50_V1_6A_MARKET_CONFIRMATION.md，
+> 开窗前须补全；R2 资产先验矩阵调研可并行派发，见 docs/tasks/52）
 >
-> 路线图变更（项目负责人 2026-08-30 批准）：V1.6A 之前插入 v0.4c 数据稳定短版本
-> （I1/X1/X2 双源化、D2/D4 Wind 一次性回填、G3 换活源、状态语义修复、饱和度评审）；
-> 完成后冻结 Fundamental Core，进入 V1.6A（仅 Market Confirmation，独立窗口）→
-> R2 资产先验矩阵调研（并行）→ V2 Asset Compass（独立窗口）。
+> v0.4c 已交付（tag v0.4c-pre-market-stable，12/15 READY）。Economic Coverage Gate
+> **有条件待完成**：D2/D4 等待用户 wind_backfill_tsf.csv 导入（数据链已就绪）、
+> X2 等 FRED 网络恢复自动补全历史、X1 overlap check 已 armed 待 FRED 恢复后执行、
+> G3 活源切换待负责人批准（涉及 frozen signals.yaml）。上述完成后冻结 Fundamental Core。
 
-## 8. 窗口交接记录（2026-08-29 V1.5B+V1.5C）
+## 8. 窗口交接记录（2026-08-30 V1.5E / v0.4c）
 
 ```text
 Last Test Result: PASS（python -m pytest，2026-08-30；另有 -m network opt-in 通过）
