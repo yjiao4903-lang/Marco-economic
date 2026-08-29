@@ -40,5 +40,6 @@ DATA_STATUS_CSV = LOCAL_DIR / "data_status.csv"
 MANUAL_FETCH_CSV = LOCAL_DIR / "manual_fetch_required.csv"
 MISSING_SERIES_CSV = LOCAL_DIR / "missing_series.csv"
 SIGNAL_SCORES_CSV = LOCAL_DIR / "signal_scores.csv"
+VINTAGE_DIR = LOCAL_DIR / "vintage"
 
 LOGS_DIR = PROJECT_ROOT / "logs"

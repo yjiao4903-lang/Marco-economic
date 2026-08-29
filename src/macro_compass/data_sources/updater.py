@@ -19,6 +19,7 @@ produce (series_id, date, value) plus source provenance.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,7 +36,11 @@ from macro_compass.data_sources.base import (
 from macro_compass.data_sources.registry import AdapterRegistry, DataSourcesConfig, load_data_sources_config
 from macro_compass.ingestion.validator import validate_canonical
 from macro_compass.logging import get_logger
-from macro_compass.storage.canonical_store import append_canonical
+from macro_compass.storage.canonical_store import (
+    append_canonical,
+    replace_series,
+    replace_window,
+)
 from macro_compass.storage.duckdb_store import DuckDBStore
 
 logger = get_logger(__name__)
@@ -168,6 +173,24 @@ def _enrich_with_indicator_metadata(
     return frame
 
 
+def _save_vintage_snapshot(frame: pd.DataFrame, series_id: str, provider: str) -> Path:
+    """Persist the raw fetched frame as a vintage snapshot (V1.2C section 11).
+
+    Snapshots accumulate under data/local/vintage/<series_id>/ so revised
+    sources (GSCPI, OECD) build up a local vintage history; the canonical
+    store keeps only the latest values.
+    """
+    stamp = pd.Timestamp.now().strftime("%Y%m%dT%H%M%S")
+    directory = paths.VINTAGE_DIR / series_id
+    directory.mkdir(parents=True, exist_ok=True)
+    snapshot = frame.copy()
+    snapshot["asof_date"] = pd.Timestamp.now().date()
+    snapshot["fetched_provider"] = provider.upper()
+    target = directory / f"{stamp}.parquet"
+    snapshot.to_parquet(target, index=False)
+    return target
+
+
 def _record_success(state: dict, outcome: FetchOutcome, now: pd.Timestamp) -> None:
     state[outcome.series_id] = {
         "last_observation_date": outcome.last_observation_date,
@@ -216,23 +239,31 @@ def update_series(
         if not provider_spec.enabled:
             errors.append(f"{provider_id}: provider disabled")
             continue
-        try:
-            frame = adapters.get(provider_id).fetch(
-                series_id, start_date=start_date, end_date=None
-            )
-            fetched_frame = frame
-            provider_used = provider_id
+        attempts = 2  # one immediate retry: several endpoints (FRED, NBS)
+        for attempt in range(1, attempts + 1):  # fail intermittently
+            try:
+                frame = adapters.get(provider_id).fetch(
+                    series_id, start_date=start_date, end_date=None
+                )
+                fetched_frame = frame
+                provider_used = provider_id
+                break
+            except ManualFetchRequired as exc:
+                errors.append(f"{provider_id}: {exc}")
+                break
+            except ProviderUnavailable as exc:
+                errors.append(f"{provider_id}: {exc}")
+                break
+            except DataSourceError as exc:
+                errors.append(f"{provider_id}: {exc}")
+                manual_only = False
+            except Exception as exc:  # failure isolation inside the chain, too
+                errors.append(f"{provider_id}: unexpected {type(exc).__name__}: {exc}")
+                manual_only = False
+            if attempt < attempts:
+                time.sleep(5)  # backoff, then retry the same provider
+        if fetched_frame is not None:
             break
-        except ManualFetchRequired as exc:
-            errors.append(f"{provider_id}: {exc}")
-        except ProviderUnavailable as exc:
-            errors.append(f"{provider_id}: {exc}")
-        except DataSourceError as exc:
-            errors.append(f"{provider_id}: {exc}")
-            manual_only = False
-        except Exception as exc:  # failure isolation inside the chain, too
-            errors.append(f"{provider_id}: unexpected {type(exc).__name__}: {exc}")
-            manual_only = False
 
     if fetched_frame is None:
         outcome.status = (
@@ -263,7 +294,14 @@ def update_series(
         status = FetchStatus.STALE
 
     if not dry_run:
-        append_canonical(frame)
+        policy = spec.update_policy.mode
+        if policy == "full_refresh":
+            _save_vintage_snapshot(frame, series_id, provider_used)
+            replace_series(frame)
+        elif policy == "replace_window":
+            replace_window(frame)
+        else:
+            append_canonical(frame)
 
     outcome.status = status.value
     outcome.provider_used = provider_used
@@ -271,7 +309,10 @@ def update_series(
     outcome.last_observation_date = pd.Timestamp(last_obs).date().isoformat()
     outcome.last_successful_fetch = now.isoformat(timespec="seconds")
     outcome.stale_days = stale_days
-    outcome.message = "; ".join(validation.warnings)
+    policy = spec.update_policy.mode
+    outcome.message = "; ".join(
+        ([f"policy={policy}"] if policy != "append" else []) + list(validation.warnings)
+    )
     outcome.frame = frame
     _record_success(state, outcome, now)
     return outcome

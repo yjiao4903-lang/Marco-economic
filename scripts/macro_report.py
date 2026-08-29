@@ -46,6 +46,7 @@ from macro_compass.signals import (  # noqa: E402
     load_signal_registry,
 )
 from macro_compass.signals.engine import SignalComputation  # noqa: E402
+from macro_compass.synthetic_guard import filter_synthetic  # noqa: E402
 from macro_compass.storage import canonical_store  # noqa: E402
 
 FACTORS = ("growth", "inflation", "domestic_financial", "global_financial")
@@ -89,6 +90,12 @@ def main() -> None:
         default=None,
         help="reference date for freshness (ISO, default: today)",
     )
+    parser.add_argument(
+        "--allow-synthetic",
+        action="store_true",
+        help="test-only: include synthetic fixture rows in the calculation "
+        "(production default: synthetic rows are excluded)",
+    )
     args = parser.parse_args()
     today = pd.Timestamp(args.today) if args.today else pd.Timestamp.today()
 
@@ -98,6 +105,10 @@ def main() -> None:
     sources_cfg = load_data_sources_config(paths.DATA_SOURCES_YAML, indicator_registry=indicators)
 
     canonical = _load_canonical()
+    canonical = filter_synthetic(
+        canonical, macro_config.get("synthetic_markers") or [],
+        allow_synthetic=args.allow_synthetic,
+    )
     series = _series_from_canonical(canonical)
     availability = assess_availability(registry, set(series))
 

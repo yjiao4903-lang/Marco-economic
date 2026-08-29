@@ -138,9 +138,73 @@ def parse_ccpr_json(text: str, currency: str) -> tuple[list, list]:
     return dates, values
 
 
+
+
+# ---------------------------------------------------------------------------
+# DR007 (V1.2C): the interbank repo chart static CSV. Only ~66 recent trading
+# days are kept in the rolling file, so this is the LIVE source; history
+# backfill comes from the AKShare FDR007 fixing (same depository-institution
+# 7-day repo market) routed as this series' fallback.
+DR007_CSV_URL = (
+    "https://www.chinamoney.com.cn/r/cms/www/chinamoney/data/currency/prr-chrt.csv"
+)
+# column layout (0-based): 0 date, 6 DR001, 7 DR007, 8 DR014
+DR007_COLUMNS = {"DR001": 6, "DR007": 7, "DR014": 8}
+
+
+def parse_dr007_csv(text: str, code: str) -> tuple[list, list]:
+    """Parse the repo-rate chart CSV into (dates, values) for ``code``."""
+    import csv as _csv
+    import io as _io
+
+    column = DR007_COLUMNS.get(code)
+    if column is None:
+        raise FetchError(f"ChinaMoney DR007 CSV has no column layout for '{code}'")
+    dates, values = [], []
+    for row in _csv.reader(_io.StringIO(text)):
+        if not row or not row[0].strip():
+            continue
+        parsed = pd.to_datetime(row[0], errors="coerce")
+        if len(row) <= column or pd.isna(parsed):
+            continue
+        try:
+            value = float(row[column])
+        except ValueError:
+            continue
+        dates.append(parsed.date())
+        values.append(value)
+    order = sorted(range(len(dates)), key=lambda i: dates[i])
+    return [dates[i] for i in order], [values[i] for i in order]
+
+
 class ChinaMoneyAdapter(DataSourceAdapter):
+
+    def _fetch_dr007(self, series_id, spec) -> pd.DataFrame:
+        code = self._require_code(series_id)
+        text = http_get(
+            DR007_CSV_URL,
+            headers=CCPR_HEADERS,
+            timeout=self.provider_spec.timeout_seconds,
+        )
+        dates, values = parse_dr007_csv(text, code)
+        if not dates:
+            raise FetchError(f"ChinaMoney repo chart returned no rows for '{code}'")
+        return build_canonical_frame(
+            series_id,
+            dates,
+            values,
+            provider=self.provider_id,
+            source_file=DR007_CSV_URL,
+            series_name=series_id,
+            unit="%",
+            frequency=spec.frequency,
+            category=spec.category,
+        )
+
     def fetch(self, series_id: str, start_date=None, end_date=None) -> pd.DataFrame:
         spec = self._require_series(series_id)
+        if series_id.startswith("CN_DR") or series_id.startswith("CN_FDR"):
+            return self._fetch_dr007(series_id, spec)
         currency = self._require_code(series_id)
         text = fetch_ccpr_pages(
             currency, start_date, end_date, timeout=self.provider_spec.timeout_seconds

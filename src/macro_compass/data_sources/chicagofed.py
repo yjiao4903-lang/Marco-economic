@@ -31,7 +31,7 @@ def parse_nfci_csv(text: str, code: str) -> tuple[list, list]:
     """Parse the weekly NFCI/ANFCI CSV into (dates, values) for ``code``."""
     df = pd.read_csv(io.StringIO(text))
     lowered = {str(c).strip().lower(): c for c in df.columns}
-    date_col = lowered.get("date") or lowered.get("weekdate") or df.columns[0]
+    date_col = lowered.get("date") or lowered.get("friday_of_week") or lowered.get("weekdate") or df.columns[0]
     code_col = lowered.get(code.lower())
     if code_col is None:
         raise FetchError(f"Chicago Fed CSV has no column '{code}': {list(df.columns)}")

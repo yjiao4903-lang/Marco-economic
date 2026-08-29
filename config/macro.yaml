@@ -10,7 +10,10 @@
 #
 # All numbers here are DECLARED PRIORS set by hand, never data-fitted and
 # never auto-searched (MASTER SPEC section 2/11; task spec 40 forbids weight
-# search). Editing this file is the only way to change them.
+# search). V1.5D normalization review adjusted G4/G5/G2 to the actual unit
+# convention of the source series (percent vs fraction) and to natural
+# economic anchors - never to asset returns. Editing this file is the only
+# way to change them.
 
 version: 1
 
@@ -44,10 +47,13 @@ score_mapping:
     # (e.g. a CLI gap of 3 points, export growth of 15pp = full score).
     default: {level: 2.0, momentum: 1.0}
     G1: {level: 3.0, momentum: 1.5}     # CLI gap (index points) vs 100
-    G2: {level: 2.0, momentum: 1.0}     # PMI new-orders gap vs 50
+    G2: {level: 2.0, momentum: 3.0}     # PMI gap in index points; monthly
+                                        # gap deltas reach ~3pp (V1.5D review)
     G3: {level: 0.20, momentum: 0.10}   # yoy growth of IP / retail volume
-    G4: {level: 0.20, momentum: 0.10}   # property sales yoy
-    G5: {level: 0.15, momentum: 0.10}   # export yoy in percent
+    G4: {level: 10.0, momentum: 5.0}    # cumulative yoy in PERCENT (NBS
+                                        # publishes 11.8, not 0.118)
+    G5: {level: 15.0, momentum: 10.0}   # export yoy in PERCENT (OECD series
+                                        # stores 4.2, not 0.042)
     I1: {momentum: 0.30}                # level basis is a percentile (no scale)
     I2: {momentum: 0.30}
     I3: {momentum: 0.30}

@@ -1,10 +1,14 @@
-"""ChinaBond (中国债券信息网) adapter (V1.2A).
+"""ChinaBond (中国债券信息网) adapter (V1.2C, endpoint replaced).
 
-ChinaBond yield-curve data lives behind a token-guarded POST endpoint
-(``searchYc``); the token is scraped from the curve page HTML at fetch time.
-The endpoint has proven unstable (page 404s / empty results when the token
-scheme changes), so this adapter is a best-effort source for CGB yields -
-the ChinaMoney curve or a Wind manual export remain the fallbacks.
+The old token-guarded ``searchYc`` endpoint was retired (404). The active
+endpoint is the treasury yield curve query ``pgxh/yzQuery`` (POST, keyless):
+
+    POST https://yield.chinabond.com.cn/cbweb-mn/pgxh/yzQuery?gjqx=10
+         &startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+
+Response: a JSON list with one entry whose ``seriesData`` is
+``[[epoch_millis, yield_percent], ...]``. Endpoint verified 2026-08-29
+(HTTP 200, values cross-checked) - see docs/research/2026-08-29_data_sources_survey.md.
 
 ``provider_code`` is the curve term label, e.g. ``10`` for the 10-year point.
 """
@@ -24,50 +28,28 @@ from macro_compass.data_sources.base import (
     http_get,
 )
 
-YC_MAIN_URL = "https://yield.chinabond.com.cn/cbweb-mn/yc/main?locale=zh_CN"
-SEARCH_YC_URL = "https://yield.chinabond.com.cn/cbweb-mn/yc/searchYc"
-YC_DEF_ID = "2c9081e50a2f9606010a3068cae70001"  # 中债国债收益率曲线
-
-_TOKEN_RE = re.compile(r'"([0-9a-f]{32})"')
-_DATE_KEYS = ("infoDate", "workTime", "date", "日期", "tradingDay")
+YZ_QUERY_URL = "https://yield.chinabond.com.cn/cbweb-mn/pgxh/yzQuery"
+DEFAULT_START_DAYS = 120  # initial fetch window; incremental overlap trims it
 
 
-def extract_token(html: str) -> str:
-    """Scrape the 32-hex token embedded in the yield-curve page."""
-    match = _TOKEN_RE.search(html)
-    if not match:
-        raise FetchError("ChinaBond page did not expose a request token")
-    return match.group(1)
-
-
-def parse_search_yc(text: str, term: str) -> tuple[list, list]:
-    """Parse the searchYc JSON list into (dates, values) for one curve term.
-
-    Items are dicts keyed by date-ish fields and term labels like ``10年``;
-    the parser tolerates both ``10年`` and plain ``10`` keys.
-    """
+def parse_yz_query(text: str) -> tuple[list, list]:
+    """Parse a yzQuery payload into (dates, values)."""
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
         raise FetchError(f"ChinaBond response is not valid JSON: {exc}") from exc
     if not isinstance(payload, list) or not payload:
-        raise FetchError(f"ChinaBond returned no rows for term '{term}'")
-
-    value_keys = (f"{term}年", str(term))
+        raise FetchError("ChinaBond yzQuery returned no rows")
+    series = payload[0].get("seriesData") or []
     dates, values = [], []
-    for item in payload:
-        if not isinstance(item, dict):
+    for point in series:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
             continue
-        raw_date = next((item[k] for k in _DATE_KEYS if item.get(k)), None)
-        raw_value = next((item[k] for k in value_keys if item.get(k)), None)
-        parsed_date = pd.to_datetime(raw_date, errors="coerce")
         try:
-            value = float(raw_value)
+            millis, value = float(point[0]), float(point[1])
         except (TypeError, ValueError):
             continue
-        if pd.isna(parsed_date):
-            continue
-        dates.append(parsed_date.date())
+        dates.append(pd.Timestamp(millis, unit="ms").date())
         values.append(value)
     return dates, values
 
@@ -77,33 +59,27 @@ class ChinaBondAdapter(DataSourceAdapter):
         spec = self._require_series(series_id)
         term = self._require_code(series_id)
         options = self.provider_spec.options
+        api_url = options.get("api_url", YZ_QUERY_URL)
 
-        page_url = options.get("page_url", YC_MAIN_URL)
-        api_url = options.get("api_url", SEARCH_YC_URL)
-        yc_def_id = options.get("yc_def_id", YC_DEF_ID)
-
-        page_html = http_get(page_url, timeout=self.provider_spec.timeout_seconds)
-        token = extract_token(page_html)
-        work_times = pd.Timestamp(end_date).date().isoformat() if end_date is not None \
-            else pd.Timestamp.now().date().isoformat()
-        form = (
-            "xyzSelect=txy"
-            f"&workTimes={work_times}"
-            "&dxbj=0&qxll=0,&yqqxN=N&yqqxK=Y"
-            f"&ycDefIds={yc_def_id}"
-            "&wrjxCBFlag=0&language=SS&locale=zh_CN"
-            f"&token={token}"
-        )
+        end = pd.Timestamp(end_date) if end_date is not None else pd.Timestamp.now()
+        start = pd.Timestamp(start_date) if start_date is not None             else end - pd.Timedelta(days=DEFAULT_START_DAYS)
+        params = {
+            "gjqx": term,
+            "startDate": start.date().isoformat(),
+            "endDate": end.date().isoformat(),
+        }
         text = http_get(
-            api_url,
-            data=form,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Referer": page_url,
-            },
+            f"{api_url}?gjqx={term}&&startDate={params['startDate']}"
+            f"&&endDate={params['endDate']}",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=self.provider_spec.timeout_seconds,
         )
-        dates, values = parse_search_yc(text, term)
+        dates, values = parse_yz_query(text)
+        if start_date is not None:
+            start_d = start.date()
+            keep = [i for i, d in enumerate(dates) if d >= start_d]
+            dates = [dates[i] for i in keep]
+            values = [values[i] for i in keep]
         if not dates:
             raise FetchError(f"ChinaBond returned no usable rows for term '{term}'")
         return build_canonical_frame(
@@ -113,7 +89,7 @@ class ChinaBondAdapter(DataSourceAdapter):
             provider=self.provider_id,
             source_file=api_url,
             series_name=series_id,
-            unit="",
+            unit="%",
             frequency=spec.frequency,
             category=spec.category,
         )

@@ -11,6 +11,8 @@ CSI300 (via ``index_zh_a_hist``).
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 from macro_compass.data_sources.base import (
@@ -52,11 +54,92 @@ def parse_akshare_hist(df: pd.DataFrame) -> tuple[list, list]:
     return list(dates[mask].dt.date), list(values[mask])
 
 
+
+
+# ---------------------------------------------------------------------------
+# China macro series (V1.2C). AKShare is the ACCESS layer (P3); the
+# original_source of every routed series is the official publisher (PBOC/NBS),
+# documented per series in data_sources.yaml.
+
+
+def _month_cn(text: str):
+    """Parse '2026年07月份' into a month-end timestamp."""
+    match = re.match(r"(\d{4})年(\d{1,2})月份?", str(text).strip())
+    if not match:
+        return None
+    return pd.Timestamp(year=int(match.group(1)), month=int(match.group(2)), day=1) + pd.offsets.MonthEnd(0)
+
+
+def fetch_macro_series(akshare, code: str) -> tuple[list, list]:
+    """Dispatch on the macro routing code (provider_code) and return
+    (month-end dates, values)."""
+    if code == "CN_PPI_YOY":
+        frame = akshare.macro_china_ppi()
+        col = "当月同比增长"
+        dates = [_month_cn(v) for v in frame["月份"]]
+        values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_M2_YOY":
+        frame = akshare.macro_china_money_supply()
+        col = "货币和准货币(M2)-同比增长"
+        dates = [_month_cn(v) for v in frame["月份"]]
+        values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_TSF_TOTAL":
+        frame = akshare.macro_china_shrzgm()
+        col = "社会融资规模增量"
+        dates = [_month_cn(v) for v in frame["月份"]]
+        values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_DR007":
+        # FDR007 fixing: depository-institution 7-day repo (the fixing of
+        # DR007) - used as the history backfill of CN_DR007. The interface
+        # accepts at most ~2 months per call, so fetch in quarterly chunks.
+        frames = []
+        end = pd.Timestamp.now().normalize()
+        start = pd.Timestamp("2014-12-01")
+        cursor = start
+        while cursor <= end:
+            chunk_end = min(cursor + pd.Timedelta(days=80), end)
+            frame = akshare.repo_rate_hist(
+                start_date=cursor.strftime("%Y%m%d"),
+                end_date=chunk_end.strftime("%Y%m%d"),
+            )
+            frames.append(frame)
+            cursor = chunk_end + pd.Timedelta(days=1)
+        frame = pd.concat(frames, ignore_index=True).drop_duplicates(subset="date")
+        dates = pd.to_datetime(frame["date"], errors="coerce")
+        values = pd.to_numeric(frame["FDR007"], errors="coerce")
+    else:
+        raise FetchError(f"AKShare adapter has no macro route for '{code}'")
+    pairs = [(d, v) for d, v in zip(dates, values) if d is not None and pd.notna(v)]
+    if not pairs:
+        raise FetchError(f"AKShare macro route '{code}' returned no rows")
+    pairs.sort()
+    return [p[0].date() if hasattr(p[0], "date") else p[0] for p in pairs], [float(p[1]) for p in pairs]
+
+
 class AkshareAdapter(DataSourceAdapter):
     def fetch(self, series_id: str, start_date=None, end_date=None) -> pd.DataFrame:
         spec = self._require_series(series_id)
         code = self._require_code(series_id)
         akshare = ensure_akshare()
+
+        if code.startswith("CN_"):
+            dates, values = fetch_macro_series(akshare, code)
+            if start_date is not None:
+                start = pd.Timestamp(start_date).date()
+                keep = [i for i, d in enumerate(dates) if d >= start]
+                dates = [dates[i] for i in keep]
+                values = [values[i] for i in keep]
+            return build_canonical_frame(
+                series_id,
+                dates,
+                values,
+                provider=self.provider_id,
+                source_file=f"akshare:macro:{code}",
+                series_name=series_id,
+                unit="",
+                frequency=spec.frequency,
+                category=spec.category,
+            )
 
         start_str = pd.Timestamp(start_date).strftime("%Y%m%d") if start_date is not None \
             else "19900101"

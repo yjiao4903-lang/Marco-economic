@@ -23,7 +23,7 @@ providers:
   fred:
     module: fred
     adapter_class: FredAdapter
-    timeout_seconds: 45
+    timeout_seconds: 90   # fredgraph needs >45s on this network (V1.2C finding)
   oecd:
     module: oecd
     adapter_class: OecdAdapter
@@ -55,12 +55,22 @@ providers:
   chicagofed:
     module: chicagofed
     adapter_class: ChicagoFedAdapter
-    timeout_seconds: 45
-    # options:
-    #   url: <weekly NFCI/ANFCI csv download url - changes often, set manually>
+    timeout_seconds: 60
+    options:
+      # one file carries NFCI + ANFCI; verified 2026-08-29 (HTTP 200)
+      url: https://api.data.chicagofed.org/NFCI/nfci-data-series-csv.csv
   wind_manual:
     module: wind_manual
     adapter_class: WindManualAdapter
+  nbs:
+    module: nbs
+    adapter_class: NbsAdapter
+    timeout_seconds: 30
+    options:
+      max_pages: 12   # listing archive pages to walk (~1 year of releases)
+  manual_series:
+    module: manual_series
+    adapter_class: ManualSeriesAdapter
 
 series:
   # --- OECD (V1.2A Batch A chain: CLI / CPI / production / retail / exports)
@@ -117,7 +127,7 @@ series:
       Export the USD/CNY central parity from Wind to data/inbox/wind/ and run
       python scripts/import_wind.py <file> (column registered as 美元兑人民币:中间价)
 
-  # --- ChinaBond (V1.2A; token-guarded endpoint, may degrade to manual)
+  # --- ChinaBond (V1.2C: pgxh/yzQuery endpoint, replaces retired searchYc)
   CN_GOV_YIELD_10Y:
     primary: chinabond
     fallback: wind_manual
@@ -197,15 +207,168 @@ series:
     max_staleness_days: 45
     original_source: PBOC monthly LPR announcement
 
-  # --- Wind-only series (manual by definition)
+  # --- NBS news-release parsing (V1.2C, P2) -------------------------------
   CHN_PMI_NEW_ORDERS:
-    primary: wind_manual
-    provider_code: ""
+    primary: nbs
+    fallback: wind_manual
+    provider_code: "PMI_NEW_ORDERS"
     frequency: monthly
     category: macro
     max_staleness_days: 60
-    original_source: NBS manufacturing PMI new orders via Wind
+    freshness:
+      expected_release_lag_days: 31   # published on the reference month's last day
+    original_source: NBS manufacturing PMI new orders (news release)
     manual_instructions: >
       Export PMI new orders (PMI:新订单) from Wind to data/inbox/wind/, add the
       column to config/wind_mapping.yaml, then run
       python scripts/import_wind.py <file>
+
+  CHN_PMI_INPUT_PRICE:
+    primary: nbs
+    fallback: wind_manual
+    provider_code: "PMI_INPUT_PRICE"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 60
+    freshness:
+      expected_release_lag_days: 31
+    original_source: NBS PMI raw-material input-price index, 13-month table in
+      the monthly PMI release (news release)
+
+  CN_CORE_CPI_YOY:
+    primary: nbs
+    fallback: wind_manual
+    provider_code: "CORE_CPI_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 60
+    freshness:
+      expected_release_lag_days: 11   # CPI released on the 9th-11th
+    original_source: NBS core CPI YoY from the monthly CPI release/interpretation
+
+  CN_PROPERTY_SALES_AREA:
+    primary: nbs
+    fallback: wind_manual
+    provider_code: "PROPERTY_SALES_AREA"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 17   # released on the 15th-17th
+    original_source: >
+      NBS new commercial housing floor space sold, YEAR-TO-DATE cumulative
+      YoY growth (%) as published (comparable growth; NBS only publishes
+      cumulative levels, so the growth rate is the comparable series)
+
+  CN_PROPERTY_SALES_VALUE:
+    primary: nbs
+    fallback: wind_manual
+    provider_code: "PROPERTY_SALES_VALUE"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 17
+    original_source: >
+      NBS new commercial housing sales value, year-to-date cumulative YoY
+      growth (%) as published
+
+  # --- AKShare-routed macro series (V1.2C, P3 access layer) ----------------
+  CN_PPI_YOY:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_PPI_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 11
+    original_source: NBS producer price index YoY via AKShare (access layer)
+
+  CN_M2_YOY:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_M2_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 15
+    original_source: PBOC M2 YoY via AKShare (access layer)
+
+  CN_TSF_TOTAL:
+    primary: pbc
+    fallback: akshare
+    provider_code: "TSF_TOTAL"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    update_policy:
+      mode: replace_window
+    freshness:
+      expected_release_lag_days: 15
+    original_source: >
+      PBOC monthly financial statistics report, year-to-date cumulative TSF
+      increment converted to monthly flow (cumulative_to_monthly); fallback
+      AKShare shrzgm (PBOC monthly flow)
+
+  CN_GOV_BOND_FINANCING:
+    primary: pbc
+    provider_code: "GOV_BOND_FINANCING"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    update_policy:
+      mode: replace_window
+    freshness:
+      expected_release_lag_days: 15
+    original_source: >
+      PBOC monthly financial statistics report, government bond net financing
+      year-to-date cumulative converted to monthly flow (cumulative_to_monthly)
+
+  # --- Domestic financial conditions (V1.2C) --------------------------------
+  CN_DR007:
+    primary: chinamoney
+    fallback: akshare
+    provider_code: "DR007"
+    fallback_code: "CN_DR007"
+    frequency: daily
+    category: macro
+    max_staleness_days: 7
+    freshness:
+      expected_release_lag_days: 0
+    original_source: >
+      ChinaMoney interbank repo chart DR007 (live; the rolling file only keeps
+      ~66 trading days). Fallback/backfill: AKShare repo_rate_hist FDR007
+      fixing of the same depository-institution 7-day repo market.
+
+  CN_POLICY_RATE_7D:
+    primary: pbc
+    fallback: manual_series
+    provider_code: "OMO_7D"
+    frequency: daily
+    category: macro
+    max_staleness_days: 21   # event-based: the rate is constant between cuts
+    update_policy:
+      mode: replace_window
+    freshness:
+      expected_release_lag_days: 0
+    original_source: >
+      PBOC 7-day reverse repo operation rate (open-market transaction
+      announcements). Fallback: committed step file data/manual_series/
+      CN_POLICY_RATE_7D.csv transcribed from the same official
+      announcements (MANUAL provenance, expanded to a daily step series).
+
+  US_GSCPI:
+    primary: nyfed
+    provider_code: "GSCPI"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    update_policy:
+      mode: full_refresh
+    freshness:
+      expected_release_lag_days: 4
+    original_source: >
+      NY Fed Global Supply Chain Pressure Index (PCA model output; the whole
+      history is revised on each release - full_refresh + vintage snapshots)

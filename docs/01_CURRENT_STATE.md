@@ -2,9 +2,12 @@
 
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
-**最后人工确认基线：** 2026-08-29  
-**Current Version:** V1.5B Signal Engine + V1.5C Macro Factor Engine（V0/V1/V1.2/V1.3/V1.5A 已冻结）  
-**当前阶段：** 系统首次输出宏观状态（Factor + Breadth + Confidence + Regime）。下一窗口进入 V1.6/V2（Window D，Market Confirmation + Structural Risk + Asset Compass）。
+**最后人工确认基线：** 2026-08-30  
+**Current Version:** V1.2C Data Coverage Hardening + V1.5D Signal Quality Gate（V0/V1/V1.2/V1.3/V1.5A/V1.5B/V1.5C 已冻结）  
+**当前阶段：** 两个数据质量 Gate 完成。Core REAL-computable 9/15（Growth 5/5、Inflation 2/3、
+Domestic 1/4、Global 1/3），Regime 首次输出真实状态（TRANSITION）。Gate A 覆盖目标 12/15 **未达成**，
+缺口全部为如实记录的 blocker（见 §10），未用 synthetic/缩窗/放宽阈值补水分。
+下一窗口进入 V1.6A Market Confirmation。
 
 ## 1. 已完成
 
@@ -66,6 +69,41 @@
 MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6/S1/S2 的输入），
 完整清单见 `python scripts/signal_status.py` 输出与 `data/local/missing_series.csv`。
 禁止为凑齐输入擅自新增 provider——补数走 V1.2 扩展窗口或 manual fetch。
+
+### V1.2C Data Coverage Hardening + V1.5D Signal Quality Gate — DONE（2026-08-30，Gate A/B）
+- **新 provider / 端点替换**（全部先实测再入库，端点验证见 docs/research 调研档案 + 本窗口复测）：
+  - `chicagofed`：直链 CSV（一份文件含 NFCI+ANFCI）→ X3 ANFCI（2748 期周度，READY real）
+  - `nyfed` GSCPI：NY Fed 直链 CSV，update_policy=full_refresh + vintage 快照（347 期月度）
+  - `chinabond`：旧 searchYc（404）→ pgxh/yzQuery 替换端点 → CN_GOV_YIELD_10Y 恢复自动更新
+  - `chinamoney` DR007：prr-chrt.csv 静态文件（live，66 个交易日滚动）
+  - `nbs`（新）：国家统计局新闻发布页解析（PMI 新订单/购进价格/房地产累计同比），离线 fixture 测试
+  - `pbc` 扩展：OMO 交易公告（7 天逆回购利率）+ 月度金融统计数据报告
+    （社融/政府债券净融资累计值经 `cumulative_to_monthly` 差分为月度流量，replace_window）
+  - `akshare` 扩展：CN_PPI_YOY / CN_M2_YOY / CN_TSF_TOTAL 兜底、CN_DR007 历史（FDR007 定盘，
+    分块抓取，仅作 backfill）
+  - `manual_series`（新）：committed 官方步进序列（data/manual_series/，MANUAL 来源，非 synthetic），
+    目前仅 CN_POLICY_RATE_7D 历史台阶（2024-01 起每日展开）
+  - FRED timeout 45→90s 并在 updater 增加一次 5s 退避重试（FRED 本网络间歇可达）
+- **update_policy**：append / replace_window / full_refresh 三模式落地
+  （canonical_store 新增 replace_window/replace_series；GSCPI=full_refresh，PBOC 报告类=replace_window）；
+  full_refresh 与可修订序列保留 raw vintage 快照（data/local/vintage/<series>/，含 asof_date/provider）
+- **freshness metadata**：data_sources.yaml 每序列可声明 expected_release_lag_days 等（V1.5D as-of
+  语义：release_date = observation_date + 声明滞后，快照不假设当天可知）
+- **synthetic production isolation**：行级过滤（synthetic_guard，按 macro.yaml synthetic_markers 匹配
+  source_file）；signal_status / macro_report 默认 allow_synthetic=false，测试才可 --allow-synthetic。
+  效果：CN_CPI_YOY 等 synthetic 序列在 production 中显式 MISSING，不再被当真实数据
+- **V1.5D（Gate B）**：
+  - `WARMUP` 状态：READY 但最新分数因声明式最小历史（由链上 window/period 推导，**禁止缩窗**）未满
+    而为 null → WARMUP；PARTIAL（缺序列）永不转为 WARMUP
+  - `scripts/signal_quality.py`：15 core 逐信号 status/history/freshness/coverage/
+    saturation_ratio_24m/60m（|score|≥0.95 占比，>40% 记 SCALE_SATURATED）/normalization/as-of 说明
+  - Normalization review（§17.3 经济锚点，非收益拟合）：G4/G5 scale 由"小数"口径修正为 NBS/OECD
+    实际"百分数"口径（G4 level 10、G5 level 15），G2 momentum 1.0→3.0（PMI gap 月差约 ±3pp）；
+    修正后无信号长期贴 ±1 边界（sat24 全部 <13%）
+  - composite completeness：breakdown 常显 available/required/coverage
+- **真实抓取结果（2026-08-30）**：25 条路由序列 21 条 OK；当前 Core READY real 9/15，
+  WARMUP 2（D2/D4），PARTIAL 1（D3），MISSING 3（I1/X1/X2）；Regime = TRANSITION
+  （growth −0.409 down，inflation +0.125 neutral）
 
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
@@ -138,7 +176,8 @@ python scripts/update_sources.py [--dry-run | --series ID | --backfill]
 python scripts/signal_status.py
 python scripts/transform_smoke.py [--signal ID | --series ID | --rows N]
 python scripts/macro_report.py [--today YYYY-MM-DD]   # V1.5C 宏观快照（验收主入口）
-python -m pytest          # 137 passed（network 测试默认跳过）
+python scripts/signal_quality.py                      # V1.5D 信号质量诊断（saturation/warmup）
+python -m pytest          # 163 passed（network 测试默认跳过，-m network opt-in）
 python -m pytest -m network
 ```
 
@@ -185,38 +224,52 @@ python -m pytest -m network
 ## 8. 窗口交接记录（2026-08-29 V1.5B+V1.5C）
 
 ```text
-Last Test Result: PASS（python -m pytest，2026-08-29）
-Last Test Count: 137 passed, 0 failed（原 100 + 新增 37：signal engine 19 +
-  macro factors/regime 18；另有 6 个 network 测试 opt-in 未计入）
-Last Git Tag: v0.4-macro-engine
-Known Issues: 见第 10 节
-Modified Files: 新增 config/macro.yaml、src/macro_compass/signals/engine.py、
-  src/macro_compass/macro/{__init__,config,factors,regime}.py、
-  scripts/macro_report.py、tests/test_signal_engine.py、tests/test_macro_factors.py；
-  修改 tests/test_ingestion.py（fixture 改生成到 tmp_path）、
-  scripts/generate_fixtures.py（main 增加可选 output_dir）、
-  src/macro_compass/paths.py（MACRO_YAML/SIGNAL_SCORES_CSV）、
-  src/macro_compass/signals/__init__.py（导出扩展）、README
+Last Test Result: PASS（python -m pytest，2026-08-30；另有 -m network opt-in 通过）
+Last Test Count: 163 passed, 0 failed（137 基线 + 26：cumulative/parsers/manual/policy/
+  isolation/WARMUP/saturation）
+Last Git Tag: v0.4b-data-quality
+Known Issues: 见第 10 节（Gate A 覆盖 9/15 未达 12/15，缺口与 blocker 分类）
+Modified Files: 新增 src/macro_compass/data_sources/{cumulative,nbs,manual_series}.py、
+  src/macro_compass/synthetic_guard.py、scripts/signal_quality.py、
+  data/manual_series/CN_POLICY_RATE_7D.csv、tests/test_data_quality_gates.py；
+  修改 data_sources/（chicagofed/nyfed/chinamoney/chinabond/pbc/akshare/registry/updater）、
+  storage/canonical_store.py（replace_window/replace_series）、
+  signals/engine.py（WARMUP）、config/data_sources.yaml（全量路由重写）、
+  config/macro.yaml（scale 修正）、scripts/{macro_report,signal_status}.py、
+  tests/data_sources/conftest.py、test_parsers.py、paths.py、README
 ```
 
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
 
-## 10. Known Issues（V1.5B/V1.5C 结束时已知，不阻塞 Window D）
+## 10. Known Issues（V1.2C/V1.5D 结束时已知）
 
-- 测试污染工作区（V1.3 遗留）：**已在本窗口修复**——tests/test_ingestion.py 生成
-  fixture 到 tmp_path，pytest 不再重写 data/fixtures/；仓库 fixture 文件保持只读。
-- V1.3 遗留数据缺口不变：15 个 Core Signal 中 10 个缺全部输入、2 个缺部分输入。
-  X1/X2/X3 等 manual list 序列网络恢复后 `python scripts/update_sources.py` 自动补上；
-  其余需后续窗口扩展 provider 或走 Wind manual。禁止擅自新增 provider。
-- PARTIAL ≠ 可计算：I1（fallback CPI 数据 36 个月 < rolling_percentile 窗口 60）与
-  D3（difference 缺 CN_PRIVATE_TSF_YOY 一条腿）状态为 PARTIAL 但 score 为显式 null，
-  引擎不静默补 0。补齐输入或降低窗口（改 signals.yaml 属 frozen 变更，须走流程）后可计算。
-- macro.yaml 的 score scale 全部为手定先验（如 G1 level=3.0、G5 level=0.15），
-  未做历史拟合也禁止拟合；若某信号分数长期贴 ±1 clip 边界（如当前 G5 momentum），
-  属先验口径问题，调整须在 macro.yaml 显式改并记录。
-- 当前真实 regime 快照为 NO_SIGNAL（inflation/domestic/global 三因子无可计算信号），
-  属数据缺口而非引擎缺陷；growth 因子 score −0.118、breadth 1（仅 G1 支持）。
-- V1.2 既有 Known Issues（FRED/ChinaBond/AKShare/Chicago Fed、check_quality 混频警告、
-  ChinaMoney WAF 限流）继续有效，见 git 历史中 V1.2 交接记录。
+### Gate A 覆盖缺口（9/15 vs 12/15 目标，blocker 分类如实记录）
+- X1/X2（US_REAL_YIELD_10Y / USD_BROAD）：**network blocker**——FRED 在本机网络间歇可达
+  （本窗口曾一次成功，其余全部 read timeout，curl 同样失败；endpoint 本身已验证正确）。
+  网络恢复后 `python scripts/update_sources.py` 自动补齐，代码无需改动。
+- D2/D4（TSF/政府债券融资）：**history warmup**——数据链已打通（PBOC 月度金融统计数据报告，
+  累计差分为月度流量，replace_window），但报告列表页仅静态暴露最近 ~4 个月（更早月份的
+  列表页为 JS 渲染），yoy(12) 需 13 期 → 每月随报告累积，约 9 个月后自动转 READY。
+  累计差分的历史回填需后续扩展（gov.cn 镜像或 manual 档案），本轮未做。
+- D3：**source blocker**——CN_PRIVATE_TSF_YOY 无自动源（派生需社融存量与政府债券存量
+  月度历史，存量表 JS 渲染不可爬）；保持 PARTIAL + null score。
+- I1：**source blocker（弱）**——核心 CPI 同比只出现在 NBS「数据解读」栏目，标题含作者名
+  不稳定；NBS 发布页路由已配置，出现可解析文章即自动入库；当前 MISSING（synthetic
+  fallback 已被 production 隔离，属预期行为）。
+- CSI300：**environment blocker**——本机代理对 eastmoney push2 间歇不可用（V1.2 既有问题，
+  market 层非本轮 Gate 范围）。
+
+### 其他
+
+- 测试污染工作区（V1.3 遗留）：已修复（V1.5B/C 窗口），data/fixtures/ 保持只读。
+- V1.2 既有 Known Issues（FRED 间歇超时、AKShare/代理间歇不可用、ChinaMoney WAF 限流、
+  check_quality 混频警告）继续有效，见 git 历史 V1.2 交接记录；本轮 FRED timeout 45→90s
+  + updater 一次重试已缓解但未根除。
+- data/manual_series/CN_POLICY_RATE_7D.csv 为人工转录的官方利率台阶（MANUAL 来源），
+  PBOC OMO 路由为 primary 会持续以真实公告覆盖近 20 个交易日；台阶文件的后续维护
+  （新降息时追加台阶）是已知人工维护点。
+- AKShare 于本窗口已安装（1.18.94），P3 兜底路由已激活；其接口变更风险（如 repo_rate_hist
+  仅支持 ≤2 个月区间、分块抓取）已封装在 adapter 内。
+- 引擎输出契约新增 WARMUP 状态（V1.5D）；ARCHITECTURE §8 十列契约不变。

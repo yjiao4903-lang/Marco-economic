@@ -34,6 +34,40 @@ class ProviderSpec(BaseModel):
     options: dict = Field(default_factory=dict)
 
 
+class UpdatePolicy(BaseModel):
+    """How fetched rows are merged into canonical (V1.2C).
+
+    - ``append``        - default: merge rows, newest import wins per
+                          (series_id, date);
+    - ``replace_window``- delete existing canonical rows of the series INSIDE
+                          the fetched window [min date, max date] before
+                          appending (handles revisions of recent history);
+    - ``full_refresh``  - replace the ENTIRE series with the fetched frame
+                          (for sources whose whole history is revised on each
+                          release, e.g. GSCPI) and keep a raw vintage
+                          snapshot under data/local/vintage/.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["append", "replace_window", "full_refresh"] = "append"
+
+
+class FreshnessMeta(BaseModel):
+    """Release-lag metadata (V1.5D as-of semantics, config-only).
+
+    ``expected_release_lag_days`` is the documented lag between observation
+    date and official publication; the quality report uses it to decide
+    whether a snapshot could have known an observation on a given as-of date.
+    No threshold is widened automatically - these are declared priors.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_release_lag_days: Optional[int] = Field(default=None, ge=0)
+    acceptable_delay_days: Optional[int] = Field(default=None, ge=0)
+
+
 class SeriesSource(BaseModel):
     """Routing for one series_id: providers, codes and freshness budget."""
 
@@ -49,6 +83,8 @@ class SeriesSource(BaseModel):
     original_source: str = ""
     manual_instructions: str = ""
     enabled: bool = True
+    update_policy: UpdatePolicy = Field(default_factory=UpdatePolicy)
+    freshness: FreshnessMeta = Field(default_factory=FreshnessMeta)
 
 
 class DataSourcesConfig(BaseModel):

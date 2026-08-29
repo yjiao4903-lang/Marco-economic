@@ -57,6 +57,12 @@ from macro_compass.signals.registry import (
     READY,
     SignalSpec,
 )
+
+# V1.5D: a signal whose inputs carry real data but have not accumulated the
+# declared minimum history yet. Minimum history is DERIVED FROM THE DECLARED
+# transform chain (largest window/period + 1) - it is never shrunk to fit
+# available data (no adaptive rolling-window shrink).
+WARMUP = "WARMUP"
 from macro_compass.transforms.pipeline import apply_chain
 
 # ARCHITECTURE section 8 output contract.
@@ -212,6 +218,27 @@ def _weighted_component(
     return numerator.where(denominator > 0) / denominator.where(denominator > 0)
 
 
+def _required_history(spec: SignalSpec) -> int:
+    """Minimum observations per input implied by the DECLARED chain.
+
+    The largest window/period parameter across the level chain and the
+    momentum transform, plus one observation to produce a value.
+    """
+    required = 1
+    for step in list(spec.transforms) + (
+        [spec.momentum_transform] if spec.momentum_transform is not None else []
+    ):
+        if step is None:
+            continue
+        for key in ("window", "periods"):
+            value = getattr(step, key, None)
+            if isinstance(value, int) and value > 0:
+                # a window produces a value on its w-th observation; a period
+                # offset needs one extra observation to diff against
+                required = max(required, value if key == "window" else value + 1)
+    return required
+
+
 def _empty_frame(signal_id: str, status: str) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -300,6 +327,8 @@ def compute_signal(
     else:
         status = READY
 
+
+
     provenance = {
         sid: str(input_provenance.get(sid, "real")) for sid in available_ids
     } if input_provenance is not None else {}
@@ -324,6 +353,17 @@ def compute_signal(
     neutral = float(spec.neutral) if spec.neutral is not None else 0.0
     direction = spec.direction or "positive"
 
+    def _finish(result: SignalComputation) -> SignalComputation:
+        """V1.5D WARMUP: a READY signal whose latest row cannot produce a
+        score (declared minimum history not yet accumulated) is WARMUP with
+        explicit null scores. PARTIAL is never converted: a missing input
+        series is a data gap, not a warm-up."""
+        if status == READY and (result.frame.empty or pd.isna(result.frame.iloc[-1]["score"])):
+            result.status = WARMUP
+            if not result.frame.empty:
+                result.frame["status"] = WARMUP
+        return result
+
     if combination == "difference":
         if len(available_ids) < len(spec.inputs):
             # A difference needs every leg: with one missing the composite is
@@ -331,19 +371,19 @@ def compute_signal(
             return _incomplete_difference(
                 spec, series, status, combination, provenance, sources, today
             )
-        return _compute_difference(
+        return _finish(_compute_difference(
             spec, series, status, combination, provenance, sources,
             macro_config, today, neutral, direction, zscore_clip,
-        )
+        ))
     if combination == "fallback":
-        return _compute_fallback(
+        return _finish(_compute_fallback(
             spec, series, available_ids, status, combination, provenance, sources,
             macro_config, today, neutral, direction, zscore_clip,
-        )
-    return _compute_single_or_average(
+        ))
+    return _finish(_compute_single_or_average(
         spec, series, status, combination, provenance, sources,
         macro_config, today, neutral, direction, zscore_clip,
-    )
+    ))
 
 
 def _incomplete_difference(

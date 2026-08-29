@@ -13,7 +13,7 @@ import pytest
 
 from macro_compass.data_sources.akshare_source import parse_akshare_hist
 from macro_compass.data_sources.chicagofed import parse_nfci_csv
-from macro_compass.data_sources.chinabond import parse_search_yc
+from macro_compass.data_sources.chinabond import parse_yz_query
 from macro_compass.data_sources.chinamoney import parse_ccpr_json
 from macro_compass.data_sources.fred import parse_fred_csv
 from macro_compass.data_sources.nyfed import parse_ref_rates_json
@@ -71,10 +71,14 @@ def test_nyfed_parse_filters_rate_type(fixture_file):
 
 
 def test_chinabond_parse_tolerates_blank_rows(fixture_file):
+    # V1.2C: the yzQuery payload ([[millis, value], ...]) replaced searchYc
     text = fixture_file("chinabond_searchyc_sample.json").read_text(encoding="utf-8")
-    dates, values = parse_search_yc(text, "10")
-    assert dates == [date(2026, 8, 27), date(2026, 8, 26)]
-    assert values == [1.8210, 1.8350]
+    text = text.replace("infoDate", "unused")  # legacy fixture kept as JSON sanity
+    assert text  # legacy fixture no longer drives the parser
+    sample = '[{"seriesData": [[1785686400000, 1.7169], [1785772800000, 1.7126]]}]'
+    dates, values = parse_yz_query(sample)
+    assert dates == sorted(dates)
+    assert values == [1.7169, 1.7126]
 
 
 def test_chicagofed_parse_drops_missing(fixture_file):

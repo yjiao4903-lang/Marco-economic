@@ -26,15 +26,35 @@ from macro_compass.signals import (  # noqa: E402
     load_signal_registry,
 )
 from macro_compass.storage import canonical_store  # noqa: E402
+from macro_compass.synthetic_guard import filter_synthetic  # noqa: E402
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--allow-synthetic",
+        action="store_true",
+        help="test-only: include synthetic fixture rows (production excludes them)",
+    )
+    args = parser.parse_args()
+
+    import yaml as _yaml
+
+    markers = []
+    if paths.MACRO_YAML.exists():
+        macro_cfg = _yaml.safe_load(paths.MACRO_YAML.read_text(encoding="utf-8")) or {}
+        markers = macro_cfg.get("synthetic_markers") or []
+
     indicators = load_indicator_config(paths.INDICATORS_YAML)
     registry = load_signal_registry(paths.SIGNALS_YAML, indicators_registry=indicators)
 
     available: set[str] = set()
     for category in ("macro", "market"):
-        frame = canonical_store.read_canonical(category)
+        frame = filter_synthetic(
+            canonical_store.read_canonical(category), markers, args.allow_synthetic
+        )
         if not frame.empty:
             available.update(frame["series_id"].unique())
 

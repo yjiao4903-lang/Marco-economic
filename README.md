@@ -3,12 +3,14 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V1.5B Signal Engine + V1.5C Macro Factor Engine**（V0/V1/V1.2/V1.3/V1.5A 已冻结）。
-> 数据层已支持公共数据源（FRED/OECD/ChinaMoney/NY Fed/PBOC 等）自动获取；
-> 信号注册（15+6+3）、变换引擎（12 种纯函数白名单）、信号打分（level+momentum）与
-> 宏观因子引擎（Growth/Inflation/Domestic/Global + Breadth + Confidence + Regime）已就绪；
+> 当前开发阶段：**V1.2C Data Coverage Hardening + V1.5D Signal Quality Gate**（截至 V1.5C 全部冻结）。
+> 数据层 25 条序列自动获取（OECD/FRED/ChicagoFed/NYFed/PBOC/NBS/ChinaMoney/ChinaBond/AKShare），
+> 支持三种更新策略（append / replace_window / full_refresh）与 vintage 快照；
+> 信号引擎 + 宏观因子引擎已就绪，production 计算默认隔离 synthetic 数据。
+> 当前 Core REAL-computable 9/15（Growth 5/5、Inflation 2/3、Domestic 1/4、Global 1/3），
+> Regime 首次输出真实状态；缺口为如实记录的 network/source/history-warmup blocker。
 > 资产评分（V2）、Dashboard（V3）尚未开发。
-> 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据。
+> 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
 ## 目录结构
 
@@ -68,6 +70,8 @@ python scripts/rebuild_db.py
 python scripts/check_quality.py
 
 # 多源自动更新（公共数据源 -> canonical -> DuckDB，生成状态报告）
+# 每序列可配置 update_policy: append / replace_window / full_refresh（GSCPI 等可修订
+# 序列使用 full_refresh 并保留 vintage 快照）
 python scripts/update_sources.py                 # 增量更新全部序列
 python scripts/update_sources.py --dry-run       # 只抓取并报告，不写库
 python scripts/update_sources.py --series USD_CNY --series CHN_CLI
@@ -83,6 +87,9 @@ python scripts/transform_smoke.py --signal I1 --rows 10
 # V1.5C 宏观快照：15 个 core signal + 四因子 + Regime 一次输出（验收主入口）
 python scripts/macro_report.py                   # 最新快照，写 data/local/signal_scores.csv
 python scripts/macro_report.py --today 2026-08-01
+
+# V1.5D 信号质量诊断：status / saturation / warmup / as-of 说明
+python scripts/signal_quality.py                 # 写 data/local/signal_quality.csv
 
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest

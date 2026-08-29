@@ -112,10 +112,10 @@ CHN_PMI_NEW_ORDERS:
 
 
 @pytest.fixture()
-def indicators(tmp_path: Path):
-    yaml_path = tmp_path / "indicators.yaml"
-    yaml_path.write_text(INDICATORS_YAML, encoding="utf-8")
-    return load_indicator_config(yaml_path)
+def indicators():
+    # V1.2C: load the real config/indicators.yaml instead of a stale embedded
+    # snapshot - new metadata-only series must not break the registry tests.
+    return load_indicator_config(paths.INDICATORS_YAML)
 
 
 @pytest.fixture()
