@@ -89,17 +89,32 @@ signals:
     layer: core
     factor: growth
     mechanism: >
-      Industrial production and retail sales volume move together with the
-      contemporaneous business cycle; combined they separate real supply-side
-      and consumption-driven activity from survey noise.
+      Contemporaneous hard-activity growth of the Chinese business cycle.
+      LIVE inputs (V1.6A G0, owner-approved 2026-08-30): NBS publishes
+      year-over-year growth rates for industrial value added and total retail
+      sales - two independent hard-data mechanisms (supply-side production
+      and household consumption). Declaration order is the priority order and
+      the engine's fallback history-preference semantics choose the first
+      input that satisfies the declared minimum history; the OECD volume
+      indices are retained as declared fallback / historical backfill inputs
+      (their SDMX series carry base-rebasing steps that corrupt yoy(12),
+      documented in the V1.6A handoff). NOTE: the declared transform chain
+      (level) matches the percent-unit NBS growth series; the retained OECD
+      index entries are last-resort declarations only (an index level is not
+      a growth rate) and require a fresh owner decision before ever being
+      activated.
     inputs:
+      - series_id: CN_IND_PROD_YOY
+        role: preferred      # NBS industrial value-added YoY, live priority 1
+      - series_id: CN_RETAIL_SALES_YOY
+        role: preferred      # NBS retail sales YoY, live priority 2
       - series_id: CHN_IND_PROD_INDEX
-        role: component
+        role: fallback       # OECD industrial production volume index (backfill)
       - series_id: CHN_RETAIL_SALES_INDEX
-        role: component
+        role: fallback       # OECD retail sales volume index (backfill)
+    combination: fallback    # declared order = priority (engine fallback semantics)
     transforms:
-      - type: yoy
-        periods: 12
+      - type: level           # NBS series are already YoY growth in percent
     momentum_transform:
       type: delta
       periods: 3

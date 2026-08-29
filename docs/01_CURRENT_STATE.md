@@ -2,14 +2,15 @@
 
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
-**最后人工确认基线：** 2026-08-30（v0.4c）  
-**Current Version:** V1.5E Pre-Market Stabilization（v0.4c；V0–V1.5D 全部冻结）  
-**当前阶段：** Core **READY 12/15**（Growth 5/5、Inflation 3/3、Domestic 2/4、Global 2/3），
-WARMUP 3（D2/D4 等用户 Wind 回填文件、X2 等 FRED 网络恢复——真实数据均已流入）。
-Economic Coverage Gate（Growth 5/5 + Inflation 3/3 + Domestic ≥3/4 + Global 3/3）**未完全达成**：
-Domestic 差 1（等待 wind_backfill_tsf.csv）、Global 差 1（X2 历史，FRED 网络阻塞）。
-Regime = TRANSITION（growth -0.399 ↓，inflation -0.031 中性带）。
-下一窗口进入 V1.6A Market Confirmation。
+**最后人工确认基线：** 2026-08-30（v0.5）  
+**Current Version:** V1.6A Market Confirmation（v0.5；V0–V1.5D、v0.4c 全部冻结）  
+**当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
+X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据，
+Market Data Matrix 见下）。G0 已完成：G3 活源切换为 NBS 增速序列（OECD 保留 fallback）。
+Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带；G0 切换后 growth 由
+−0.399 → −0.357，Regime 分类不变）。资产评分（V2）、Dashboard（V3）尚未开发。
+所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，
+且默认不进入生产计算。
 
 ## 1. 已完成
 
@@ -143,6 +144,73 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
 - **P1-5 D2/D4 Wind 回填**：依赖用户导出 `wind_backfill_tsf.csv`——**文件未就绪，等待状态**
   （数据链已就绪：PBOC 增量 replace_window 正常，导入回填文件后 D2/D4 立即 WARMUP→READY）。
 
+### V1.6A Market Confirmation（v0.5）— DONE（2026-08-30，Window D1）
+
+**G0：G3 活源切换（负责人 2026-08-30 批准的唯一 signals.yaml 变更）**
+- `signals.yaml` G3 inputs 改为声明优先级序列：CN_IND_PROD_YOY（NBS 工业增加值当月同比，
+  preferred）→ CN_RETAIL_SALES_YOY（NBS 社零当月同比，preferred）→ CHN_IND_PROD_INDEX /
+  CHN_RETAIL_SALES_INDEX（OECD 指数，保留为 fallback，未删除）；`combination: fallback`、
+  transforms 由 yoy(12) 改为 level（NBS 序列本身即增速），momentum delta(3) 不变，
+  direction/neutral/weights 不变。
+- 切换的实证依据：OECD SDMX 工业生产指数存在**基期重编台阶**（2026-05 附近 yoy(12) 给出
+  −19.9% 的伪值，而 NBS 官方同比为 +4.5~5.3%）。
+- **G3 score 对照（同参照月 2026-05）**：切换前（OECD 指数链）level −0.104 / score **−0.076**；
+  切换后（NBS 增速链）level +4.5% / score **+0.078**。最新值（2026-07，NBS）：score +0.133。
+  growth 因子 −0.399 → −0.357，Regime 保持 TRANSITION。快照存
+  `data/local/g3_before_switch.csv` / `g3_after_switch.csv`。
+- macro.yaml G3 scale {level 0.20→20.0, momentum 0.10→10.0}：**纯单位换算（分数→百分数，
+  ×100），非重新拟合**，与 G4/G5 的"百分数口径"先例一致。
+- 新序列注册：indicators.yaml + data_sources.yaml 增 CN_IND_PROD_YOY / CN_RETAIL_SALES_YOY
+  （primary akshare→东财 RPT_ECONOMY_INDUS_GROW / RPT_ECONOMY_TOTAL_RETAIL，
+  original_source=NBS；各约 190 期历史入库）。regression test 锁定新声明与引擎优先级语义
+  （tests/test_v05a.py::test_g0_*）。
+
+**第一阶段：Market Data Readiness — 6/6 real READY（门槛 ≥5/6 PASS）**
+
+| Market Signal | Provider (primary/fallback) | History 起点 | Frequency | Freshness | READY |
+|---|---|---|---|---|---|
+| M1 CSI300 | eastmoney push2his(1.000300) / akshare-sina(sh000300) | 2002-01-04 | daily | 2d ok | READY（primary 因本机代理 blocker 走 fallback，FALLBACK_USED 显式） |
+| M2 Hang Seng Index | eastmoney push2his(100.HSI) / akshare-sina(HSI) | 2013-08-20 | daily | 2d ok | READY（价格指数非全收益，已声明） |
+| M3 China 10Y Yield | chinabond yzQuery / wind_manual | 2023-05-17 | daily | 3d ok | READY（端点仅存 2023-08 起数据，已加深 initial 回填窗口） |
+| M4 AAA Credit Spread | chinabond historyQuery / wind_manual | 2007-12-21 | daily | 2d ok | READY（同源派生：中债中票AAA 3Y − 国债 3Y；2026-08-28=0.4157 与调研档案锚点一致） |
+| M5 USD/CNY | chinamoney 中间价 / wind_manual | 2016-01-04 | daily | 2d ok | READY（按年分段回填，CcprHisNew 单次跨度≤1年） |
+| M6 Copper (LME 3M) | akshare(新浪外盘 CAD) / - | 2016-08-30 | daily | 2d ok | READY（选型理由见下） |
+
+- **M6 选型决策（任务书授权 D1 决定）**：LME 3M 铜（连续 3 个月远期报价，**无主力换月跳空**，
+  冻结 transform 白名单直接可用）。SHFE CU0 被否：换月跳空需比例复权 = 新增变换，
+  违反本窗口"不新增变换"约束；CCIDX 被否：官网端点未在档案中落地验证且公开历史仅 4 年。
+  已声明局限：美元净价（内嵌汇率，M5/X2 覆盖美元维度）、伦敦日历、发布滞后 1 天。
+- 新 provider `eastmoney.py`：push2his kline adapter，**显式绕过环境代理**（trust_env=False
+  等价物），失败一律 FetchError → updater 走 akshare-sina fallback 并显式标 FALLBACK_USED，
+  禁止静默失败（本机 push2his 被代理拦截，与调研档案一致）。
+- M4 为 adapter 内同源派生序列（先例：pbc.py derive_private_tsf_yoy）；
+  CN_AAA_CREDIT_SPREAD 元数据更正为 daily/percent（fixture 的 AA+产业旧口径未沿用）。
+
+**第二、三阶段：市场信号计算 + Divergence 引擎**
+- `config/market.yaml`（新）：逐信号方向约定（M1/M2 positive，M3 negative=收益率下行=
+  宽松/牛市方向 v1 声明、M4 negative=利差走阔、M5 negative=USDCNY 上行=人民币贬值、
+  M6 positive）、度量基（pct_change / delta in pp）、窗口（1M=21/3M=63/6M=126 obs、
+  percentile=250）、6M 方向阈值、macro_reference 因子映射、macro_score 阈值 0.10。
+  全部数值为声明先验，加载时显式校验（缺 direction 即报错，禁止隐式假设）。
+- `src/macro_compass/market/`（config.py + engine.py）：纯函数市场引擎，复用 transforms
+  白名单（apply_chain + rolling_percentile），**未新增任何变换**。输出四元组
+  macro_direction（参照因子分数均值过阈值）/ market_direction（6M 趋势过阈值且 3M 不反向；
+  1M 与 oriented percentile 仅作报告上下文，从不静默覆盖趋势判定）/ agreement / confidence
+  （coverage=历史/窗口、freshness=staleness 预算、source_quality=来源分级——数据质量描述，
+  非预测概率）。五状态：CONFIRMED_POSITIVE / CONFIRMED_NEGATIVE /
+  POSITIVE_MACRO_DIVERGENCE / NEGATIVE_MACRO_DIVERGENCE / MIXED（命名 = 以未被市场确认的
+  宏观方向命名；任一侧中性 → MIXED）。
+- **隔离（ARCHITECTURE §10）**：市场层只读 factor 输出；无任何 Fundamental 模块 import
+  market 包（源码级测试锁定）+ 行为级测试（计算市场层后 core 计算帧逐位不变）。
+- 报告入口 `scripts/market_report.py`：Market Data Matrix + 六信号 1M/3M/6M/percentile +
+  divergence 快照；写 `data/local/market_confirmation.csv`。signal_status 的市场层状态改由
+  市场引擎解析（READY/WARMUP/MISSING_INPUT，不再显示 DECLARED 占位）。
+- macro.yaml confidence.source_quality 增 EASTMONEY: 0.7（聚合商层级，与 AKShare 同级）。
+- 当前真实 divergence 快照（2026-08-30）：M5 USD/CNY **CONFIRMED_POSITIVE**（国内金融条件
+  宽松 + 人民币走强相互确认）；M6 铜 **NEGATIVE_MACRO_DIVERGENCE**（growth 下行但铜价
+  6M +7.4% 处 250 日 100 分位——市场未确认基本面走弱）；M1-M4 MIXED（宏观中性或市场无方向）。
+
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -198,9 +266,14 @@ source 记为 provider 大写，如 OECD / NYFED / PBC / CHINAMONEY）。
    Signal Engine（signals/engine.py）      ← V1.5B
         ↓  （只读 Signal 输出，禁止跳回 raw series）
    Macro Factor Engine（macro/factors.py + regime.py）  ← V1.5C
+        ↓  （factor 输出，只读）
+   Market Confirmation（market/config.py + market/engine.py）  ← V1.6A
         ↓
    （Asset Mapping 属 V2，未开发）
 ```
+
+市场层隔离：`market/*` 只读 canonical 市场序列与 factor 输出；Fundamental 模块
+不 import market 包（测试锁定），市场结果永不反向修改任何 Fundamental Score。
 
 ## 4. 当前 README 已定义命令
 
@@ -216,7 +289,8 @@ python scripts/signal_status.py
 python scripts/transform_smoke.py [--signal ID | --series ID | --rows N]
 python scripts/macro_report.py [--today YYYY-MM-DD]   # V1.5C 宏观快照（验收主入口）
 python scripts/signal_quality.py                      # V1.5D 信号质量诊断（saturation/warmup）
-python -m pytest          # 176 passed（network 测试默认跳过，-m network opt-in）
+python scripts/market_report.py [--today YYYY-MM-DD]  # V1.6A 市场确认层快照（Matrix+divergence）
+python -m pytest          # 192 passed（network 测试默认跳过，-m network opt-in）
 python -m pytest -m network
 ```
 
@@ -247,72 +321,101 @@ python -m pytest -m network
   - `config/macro.yaml` schema（score_mapping/factor_weights/confidence/regime/
     synthetic_markers 五段）；数值是先验，调整不改结构
 
+- V1.6A 冻结（后续版本只扩展不重写）：
+  - `config/signals.yaml` 的 G3 新声明（NBS 增速 live + OECD fallback、
+    combination: fallback、level 链）——此为负责人授权的唯一 signals.yaml 变更
+  - `config/market.yaml` schema（signals 段五键 + thresholds.macro_score）；
+    方向约定/窗口/阈值是声明先验，加载时显式校验
+  - `market/engine.py` 的度量口径（1M/3M/6M=21/63/126 obs、percentile=250、
+    direction-adjusted、oriented percentile）与五状态命名规则
+    （以未被确认的宏观方向命名 divergence；任一侧中性 → MIXED）
+  - 市场层单向隔离：`market/*` 只读 factor 输出；Fundamental 不得 import market；
+    Divergence 永不翻译成买卖信号
+  - M4 利差口径：中债中票AAA 3Y − 国债 3Y（historyQuery 同源派生）；
+    M6 口径：LME 3M 铜（无换月跳空）；改变口径须负责人批准
+
 ## 6. 当前未开发
 
-- Market Confirmation / Structural Risk 引擎（V1.6；registry 中已占位）
+- Structural Risk 引擎（V2.6；registry 中已占位）
 - Asset Compass / Historical Validation / Streamlit Dashboard / Cloud Mirror
 
 ## 7. 下一任务
 
-> V1.6A Market Confirmation（新窗口 Window D1，见 docs/tasks/50_V1_6A_MARKET_CONFIRMATION.md；
-> R2 资产先验矩阵调研已完成并归档 docs/research/2026-08-30_R2_asset_prior_matrix.md）
+> **V2 Asset Compass**（见 docs/tasks/55_V2_ASSET_COMPASS.md）。前置 Gate：
+> ① Economic Coverage Gate 完成（D2/D4 等 wind_backfill_tsf.csv、X2 等 FRED 恢复）；
+> ② V1.6A Market Confirmation PASS（已交付 v0.5，待协调员验收）；
+> ③ R2 资产先验矩阵转写（调研已归档 docs/research/2026-08-30_R2_asset_prior_matrix.md）。
+> 三项齐备后新开窗口。V1.6A 交付内容冻结，不要在 V2 窗口改动 market 层口径。
 >
-> v0.4c 已交付（tag v0.4c-pre-market-stable，12/15 READY）。Economic Coverage Gate
-> **有条件待完成**：D2/D4 等待用户上传 wind_backfill_tsf.csv（用户已确认数据可取得，
-> 建议同时包含社融存量两列以加固 D3；数据链已就绪，导入即转 READY）、
-> X2 等 FRED 网络恢复自动补全历史、X1 overlap check 已 armed 待 FRED 恢复后执行。
->
-> **负责人已批准（2026-08-30）**：G3 活源切换（OECD→NBS 增速序列为 live，
-> OECD 保留历史/兜底）——授权 Window D1 作为 G0 预置任务修改 frozen signals.yaml，
-> 这是唯一被授权的 signals.yaml 变更。上述全部完成后冻结 Fundamental Core。
->
-> **协调职责移交（2026-08-30）**：D1 交付后的验收、后续任务书起草与外部调研管理
+> **协调职责（2026-08-30 起）**：D1 交付后的验收、后续任务书起草与外部调研管理
 > 由新协调员窗口接手，工作手册见 **docs/COORDINATOR_HANDOFF.md**（含 D1 验收
 > 程序、待办队列、55 号任务书素材与红线清单）。
 
-## 8. 窗口交接记录（2026-08-30 V1.5E / v0.4c）
+## 8. 窗口交接记录（2026-08-30 V1.6A / v0.5，Window D1）
 
 ```text
-Last Test Result: PASS（python -m pytest，2026-08-30；另有 -m network opt-in 通过）
-Last Test Count: 176 passed, 0 failed（163 基线 + 13：共享状态/Treasury与H.10解析/
-  核心CPI表格/私人社融派生/fallback历史偏好/overlap比较）
-Last Git Tag: v0.4c-pre-market-stable
-Known Issues: 见第 10 节（Gate A 覆盖 9/15 未达 12/15，缺口与 blocker 分类）
-Modified Files: 新增 data_sources/{treasury,fedh10}.py、signals/status.py、
-  scripts/overlap_check.py、tests/test_v04c.py；修改 signals/engine.py（fallback
-  历史偏好）、signals/__init__.py、scripts/{signal_status,macro_report,signal_quality}.py
-  （统一走 load_core_computations）、data_sources/pbc.py（D3 派生）、
-  config/data_sources.yaml（treasury/fed_h10/private_tsf 路由 + OECD/ANFCI
-  replace_window + freshness）、config/macro.yaml（G4/G5/D3 scale 修正）、README
+Last Test Result: PASS（python -m pytest，2026-08-30；-m network opt-in 6 passed 2 skipped，
+  skip 为 FRED 与 eastmoney push2his 两个已知环境 blocker 的如实行为）
+Last Test Count: 192 passed, 0 failed（176 基线 + 16：G0 声明/优先级/scale 锁定 3 +
+  eastmoney/spread 解析器 4 + 市场约定/WARMUP/五状态/confidence/隔离 8 + 更新后的
+  registry 可用性断言 1）
+Last Git Tag: v0.5-market-confirmation
+Known Issues: 见第 10 节
+Modified Files: 新增 src/macro_compass/market/{__init__,config,engine}.py、
+  data_sources/eastmoney.py、scripts/market_report.py、tests/test_v05a.py、
+  config/market.yaml；修改 data_sources/{akshare_source,chinabond,chinamoney}.py
+  （新浪指数/外盘路由、historyQuery 利差、按年分段回填）、signals/status.py
+  （market 层状态解析，向后兼容）、scripts/signal_status.py、paths.py、
+  config/signals.yaml（仅 G3）、config/indicators.yaml（+2 NBS 序列、M4 元数据更正）、
+  config/data_sources.yaml（eastmoney provider + 市场序列路由 + chinabond/初始窗口）、
+  config/macro.yaml（G3 scale 单位换算、EASTMONEY 评级）、
+  tests/test_signal_registry.py（G3 可用性断言随授权变更更新）、README
 ```
 
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
 
-## 10. Known Issues（V1.2C/V1.5D 结束时已知）
+## 10. Known Issues（V1.6A 结束时已知）
 
-### Economic Coverage Gate 缺口（12/15 READY vs 14/15 理想）
+### Economic Coverage Gate（Fundamental Core）
+
 - D2/D4（WARMUP→READY 的最后一步）：**等待用户人工导出 `wind_backfill_tsf.csv`**
   （Total TSF Flow + Government Bond Financing Flow，≥60 个月）。导入数据链已就绪，
   文件就绪后一次导入即转 READY；未就绪期间保持 WARMUP（真实 PBOC 增量已按月流入），
-  **禁止用其他来源凑数**（任务书协调员补充 3）。
-- X2（WARMUP）：FRED DTWEXBGS **network blocker**（本窗口 9+ 次尝试全部超时）；
-  H.10 fallback 已实战工作（当前周 5 期），FRED 恢复后 update 自动补全历史 → READY。
+  **禁止用其他来源凑数**。
+- X2（WARMUP）：FRED DTWEXBGS **network blocker**；H.10 fallback 已实战工作，
+  FRED 恢复后 update 自动补全历史 → READY。
 - X1 overlap check **BLOCKED**（同 FRED 网络）：`scripts/overlap_check.py` 已 armed，
-  必须在 FRED 行并入 US_REAL_YIELD_10Y 前 PASS（≥60 共同交易日）；当前 canonical 中
-  该序列只有 Treasury 单源，无混源风险。
-- G3 活源切换（OECD→NBS 增速）需改 frozen signals.yaml 输入声明——**待负责人决策**；
-  本轮已加 OECD replace_window + release-lag 元数据，STALE 如实保留。
+  必须在 FRED 行并入 US_REAL_YIELD_10Y 前 PASS（≥60 共同交易日）。
 
-### 其他
+### V1.6A 市场层遗留与限制（如实记录）
+
+- **G3 OECD fallback 条目为"声明保留"性质**：OECD 指数序列与 NBS 增速序列单位不同
+  （指数 vs 百分比），G3 现声明链（level）只匹配 NBS 增速；两个 OECD 条目仅当 NBS 双腿
+  完全无数据时才会被 fallback 选中（届时 level 基底不是增速，需负责人重新决策口径），
+  正常运行永不触发。
+- **M1/M2 primary（东财 push2his）在本机被代理拦截**：每次 update 均走 akshare-sina
+  fallback 并显式标 FALLBACK_USED（非静默）；代理恢复后 primary 自动生效。
+- **M3 历史起点 2023-05**：chinabond yzQuery 端点本身只存 2023-08 起数据（本轮已验证），
+  非抓取缺陷；如需 2006 起的 10Y 历史，可后续改走 historyQuery（同源已验证），须负责人批准。
+- **M6 口径局限**：LME 3M 为美元净价（内嵌汇率）且伦敦日历（发布滞后 1 天、节假日与
+  中国日历不对齐——各市场信号各自按自身交易日计算，不做跨日历对齐）；铜价与 X2 美元
+  因子存在机械负相关，解读时注意。
+- **M3 方向约定局限（v1 声明）**：收益率下行=宽松/牛市方向；收益率下行若源于增长恶化
+  预期而非宽松，方向语义会失真——报告同时展示 raw basis 与 oriented percentile 以便
+  人工判读。
+- **ChinaMoney WAF 限流**：本轮实测 CcprHisNew 与 ClsYldCurvHis 均存在突发 403；
+  parity 回填已按年分段+休眠，日常增量窗口小、风险可控。
+- **Divergence 阈值未经历史检验**：market.yaml 的 trend_6m/macro_score 阈值是声明先验
+  （V2.5 Historical Validation 才允许回测），当前只保证语义可解释、可追溯。
+
+### 其他（沿袭）
 
 - 测试污染工作区（V1.3 遗留）：已修复（V1.5B/C 窗口），data/fixtures/ 保持只读。
 - V1.2 既有 Known Issues（FRED 间歇超时、AKShare/代理间歇不可用、ChinaMoney WAF 限流、
-  check_quality 混频警告）继续有效，见 git 历史 V1.2 交接记录；本轮 FRED timeout 45→90s
-  + updater 一次重试已缓解但未根除。
+  check_quality 混频警告）继续有效，见 git 历史 V1.2 交接记录。
 - data/manual_series/CN_POLICY_RATE_7D.csv 仅作历史 bootstrap/emergency fallback；
-  PBC OMO live 路由已验证自动持久化（v0.4c P1-7），新降息无需人工追加。
-- AKShare 于本窗口已安装（1.18.94），P3 兜底路由已激活；其接口变更风险（如 repo_rate_hist
-  仅支持 ≤2 个月区间、分块抓取）已封装在 adapter 内。
-- 引擎输出契约新增 WARMUP 状态（V1.5D）；ARCHITECTURE §8 十列契约不变。
+  PBC OMO live 路由已验证自动持久化（v0.4c P1-7）。
+- AKShare 1.18.94；其接口变更风险（如 repo_rate_hist 仅支持 ≤2 个月区间）已封装在 adapter 内。
+- 引擎输出契约 WARMUP 状态（V1.5D）；ARCHITECTURE §8 十列契约不变。

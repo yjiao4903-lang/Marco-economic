@@ -23,9 +23,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from macro_compass import paths  # noqa: E402
 from macro_compass.config import load_indicator_config  # noqa: E402
 from macro_compass.macro import load_macro_config  # noqa: E402
+from macro_compass.market import compute_market_metrics, load_market_config  # noqa: E402
 from macro_compass.signals import (  # noqa: E402
     load_core_computations,
     load_signal_registry,
+    resolve_signal_status,
 )
 
 
@@ -41,12 +43,20 @@ def main() -> None:
     indicators = load_indicator_config(paths.INDICATORS_YAML)
     registry = load_signal_registry(paths.SIGNALS_YAML, indicators_registry=indicators)
     macro_config = load_macro_config(paths.MACRO_YAML)
+    market_config = load_market_config(paths.MARKET_YAML)
 
     snapshot = load_core_computations(
         registry, macro_config, allow_synthetic=args.allow_synthetic
     )
     availability = snapshot.availability
-    resolved = snapshot.resolved
+    # V1.6A: market-layer statuses come from the market engine (READY /
+    # WARMUP / MISSING_INPUT), not the registry placeholders
+    market_metrics = compute_market_metrics(
+        registry, market_config, snapshot.series, snapshot.today
+    )
+    resolved = resolve_signal_status(
+        registry, availability, snapshot.computations, market_metrics
+    )
 
     layers = (("core", "Core Fundamental"), ("market", "Market Confirmation"),
               ("structural", "Structural Risk"))

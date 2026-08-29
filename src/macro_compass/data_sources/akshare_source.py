@@ -25,6 +25,12 @@ from macro_compass.data_sources.base import (
 _DATE_CANDIDATES = ("日期", "date", "DATE")
 _CLOSE_CANDIDATES = ("收盘", "close", "CLOSE")
 
+# V1.6A market-layer routes (sina-backed AKShare functions; the sina hosts are
+# reachable where the eastmoney push2his primary is proxy-blocked):
+_SINA_HK_INDEX_CODES = {"HSI"}                     # stock_hk_index_daily_sina
+_SINA_CN_INDEX_CODES = {"sh000300", "sz399300"}    # stock_zh_index_daily
+_SINA_FOREIGN_FUTURES_CODES = {"CAD"}              # LME 3M copper, futures_foreign_hist
+
 
 def ensure_akshare():
     try:
@@ -86,6 +92,22 @@ def fetch_macro_series(akshare, code: str) -> tuple[list, list]:
     elif code == "CN_CPI_YOY":
         frame = akshare.macro_china_cpi()
         col = "全国-同比增长"
+        dates = [_month_cn(v) for v in frame["月份"]]
+        values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_IND_PROD_YOY":
+        # NBS industrial value-added YoY via AKShare access layer
+        # (upstream: eastmoney RPT_ECONOMY_INDUS_GROW, original_source NBS).
+        # V1.6A G0: live input of G3 Hard Activity.
+        frame = akshare.macro_china_gyzjz()
+        col = "同比增长"
+        dates = [_month_cn(v) for v in frame["月份"]]
+        values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_RETAIL_SALES_YOY":
+        # NBS total retail sales YoY via AKShare access layer
+        # (upstream: eastmoney RPT_ECONOMY_TOTAL_RETAIL, original_source NBS).
+        # V1.6A G0: second live input of G3 Hard Activity.
+        frame = akshare.macro_china_consumer_goods_retail()
+        col = "同比增长"
         dates = [_month_cn(v) for v in frame["月份"]]
         values = pd.to_numeric(frame[col], errors="coerce")
     elif code == "CN_TSF_TOTAL":
@@ -151,15 +173,34 @@ class AkshareAdapter(DataSourceAdapter):
         end_str = pd.Timestamp(end_date).strftime("%Y%m%d") if end_date is not None \
             else pd.Timestamp.now().strftime("%Y%m%d")
         try:
-            hist = akshare.index_zh_a_hist(
-                symbol=code, period="daily", start_date=start_str, end_date=end_str
-            )
+            if code in _SINA_HK_INDEX_CODES:
+                # V1.6A M2 fallback: HK index daily closes via sina (the
+                # eastmoney push2his primary is proxy-blocked on some hosts)
+                hist = akshare.stock_hk_index_daily_sina(symbol=code)
+            elif code in _SINA_CN_INDEX_CODES:
+                # V1.6A M1 fallback: A-share index daily closes via sina
+                hist = akshare.stock_zh_index_daily(symbol=code)
+            elif code in _SINA_FOREIGN_FUTURES_CODES:
+                # V1.6A M6: LME 3M copper continuous forward (no contract
+                # rolls -> no roll jumps); full history, filtered locally
+                hist = akshare.futures_foreign_hist(symbol=code)
+            else:
+                hist = akshare.index_zh_a_hist(
+                    symbol=code, period="daily", start_date=start_str, end_date=end_str
+                )
         except Exception as exc:
-            raise FetchError(f"akshare index_zh_a_hist('{code}') failed: {exc}") from exc
+            raise FetchError(f"akshare index/futures route '{code}' failed: {exc}") from exc
         if hist is None or hist.empty:
             raise FetchError(f"akshare returned no rows for '{code}'")
 
         dates, values = parse_akshare_hist(hist)
+        if start_date is not None:
+            start = pd.Timestamp(start_date).date()
+            keep = [i for i, d in enumerate(dates) if d >= start]
+            dates = [dates[i] for i in keep]
+            values = [values[i] for i in keep]
+        if not dates:
+            raise FetchError(f"akshare returned no rows since {start_date} for '{code}'")
         return build_canonical_frame(
             series_id,
             dates,

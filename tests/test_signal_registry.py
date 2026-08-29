@@ -187,7 +187,10 @@ def test_missing_registry_file(tmp_path: Path) -> None:
 
 
 def test_availability_statuses(registry) -> None:
-    available = {"CHN_CLI", "CHN_IND_PROD_INDEX", "CSI300"}
+    # V1.6A G0: G3's live inputs are the NBS growth series; OECD indices are
+    # declared fallbacks - a partial input set still yields PARTIAL with the
+    # full declared-missing list.
+    available = {"CHN_CLI", "CN_IND_PROD_YOY", "CSI300"}
     states = assess_availability(registry, available)
     assert states["G1"].status == READY          # CHN_CLI available
     assert states["G3"].status == PARTIAL        # industrial yes, retail no
@@ -196,7 +199,11 @@ def test_availability_statuses(registry) -> None:
     assert states["M1"].status == DECLARED       # market placeholder w/ data
     assert states["M2"].status == MISSING_INPUT  # HSI absent
     assert states["S3"].status == DECLARED       # structural placeholder, no inputs
-    assert states["G3"].missing == ["CHN_RETAIL_SALES_INDEX"]
+    assert states["G3"].missing == [
+        "CN_RETAIL_SALES_YOY",
+        "CHN_IND_PROD_INDEX",
+        "CHN_RETAIL_SALES_INDEX",
+    ]
 
 
 def test_missing_series_manifest_inputs(registry) -> None:

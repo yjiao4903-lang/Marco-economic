@@ -85,3 +85,39 @@ def test_chinabond_real_fetch_or_skip():
     assert not frame.empty
     assert (frame["series_id"] == "CN_GOV_YIELD_10Y").all()
     assert (frame["value"] > 0).all() and (frame["value"] < 10).all()
+
+
+# --- V1.6A market-layer providers (opt-in network smoke) --------------------------
+
+
+def test_eastmoney_real_fetch_or_skip():
+    """push2his is proxy-blocked on some hosts (documented environment
+    blocker); the adapter must surface that as FetchError, never silently."""
+    _, adapter, config = _adapter_for("eastmoney")
+    try:
+        frame = adapter.fetch("CSI300", start_date=date.today() - timedelta(days=30))
+    except DataSourceError as exc:
+        pytest.skip(f"eastmoney push2his unreachable from this host: {exc}")
+    assert not frame.empty
+    assert (frame["series_id"] == "CSI300").all()
+    assert (frame["value"] > 100).all()  # CSI300 index points
+
+
+def test_akshare_sina_market_routes_real_fetch():
+    """The sina-backed market routes (M1/M2 fallback, M6 LME primary)."""
+    _, adapter, config = _adapter_for("akshare")
+    for series_id, lo, hi in (("CSI300", 1000, 10000), ("HSI", 10000, 60000), ("COPPER_PRICE", 1000, 20000)):
+        frame = adapter.fetch(series_id, start_date=date.today() - timedelta(days=30))
+        assert not frame.empty, series_id
+        assert (frame["series_id"] == series_id).all()
+        assert (frame["value"] > lo).all() and (frame["value"] < hi).all()
+
+
+def test_chinabond_spread_real_fetch():
+    """M4: same-source AAA spread from the full-curve table endpoint."""
+    _, adapter, config = _adapter_for("chinabond")
+    frame = adapter.fetch("CN_AAA_CREDIT_SPREAD", start_date=date.today() - timedelta(days=30))
+    assert not frame.empty
+    assert (frame["series_id"] == "CN_AAA_CREDIT_SPREAD").all()
+    # spread in percent: positive and below ~5 (500bp) by construction
+    assert (frame["value"] > 0).all() and (frame["value"] < 5).all()

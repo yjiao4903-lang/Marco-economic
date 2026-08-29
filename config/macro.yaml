@@ -49,7 +49,12 @@ score_mapping:
     G1: {level: 3.0, momentum: 1.5}     # CLI gap (index points) vs 100
     G2: {level: 2.0, momentum: 3.0}     # PMI gap in index points; monthly
                                         # gap deltas reach ~3pp (V1.5D review)
-    G3: {level: 0.20, momentum: 0.10}   # yoy growth of IP / retail volume
+    G3: {level: 20.0, momentum: 10.0}   # V1.6A G0: live inputs are now the NBS
+                                        # growth series in PERCENT (4.5, not
+                                        # 0.045); scales x100 from the old
+                                        # OECD-fraction chain {0.20, 0.10} -
+                                        # pure unit conversion, same numeric
+                                        # behaviour, no re-fit
     G4: {level: 15.0, momentum: 5.0}    # cumulative yoy in PERCENT (NBS
                                         # publishes 11.8, not 0.118);
                                         # v0.4c review: 10->15 (median
@@ -123,6 +128,7 @@ confidence:
     PBC: 0.9
     CHINAMONEY: 0.9
     AKSHARE: 0.7
+    EASTMONEY: 0.7   # V1.6A: aggregator access layer, same tier as AKShare
     WIND: 0.6
     SYNTHETIC: 0.2
     MANUAL: 0.6

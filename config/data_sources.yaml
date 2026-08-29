@@ -36,6 +36,8 @@ providers:
     module: chinabond
     adapter_class: ChinaBondAdapter
     timeout_seconds: 30
+    options:
+      initial_days: 1200   # V1.6A: --backfill covers the full yzQuery archive
   akshare:
     module: akshare_source
     adapter_class: AkshareAdapter
@@ -79,6 +81,15 @@ providers:
     module: fedh10
     adapter_class: FedH10Adapter
     timeout_seconds: 30
+  eastmoney:
+    # V1.6A M1/M2 primary: push2his daily klines. The local proxy
+    # intermittently blocks this domain (documented environment blocker) -
+    # the adapter bypasses the ambient proxy explicitly and every failure
+    # surfaces as FetchError so the sina-based AKShare fallback reports
+    # FALLBACK_USED. No silent failure.
+    module: eastmoney
+    adapter_class: EastmoneyAdapter
+    timeout_seconds: 45
 
 series:
   # --- OECD (V1.2A Batch A chain: CLI / CPI / production / retail / exports)
@@ -156,6 +167,8 @@ series:
       python scripts/import_wind.py <file> (column registered as 美元兑人民币:中间价)
 
   # --- ChinaBond (V1.2C: pgxh/yzQuery endpoint, replaces retired searchYc)
+  #     V1.6A: initial_days extended so a --backfill pull covers the full
+  #     yzQuery archive (the endpoint itself only holds data from 2023-08).
   CN_GOV_YIELD_10Y:
     primary: chinabond
     fallback: wind_manual
@@ -356,6 +369,36 @@ series:
       expected_release_lag_days: 15
     original_source: PBOC M2 YoY via AKShare (access layer)
 
+  # --- V1.6A G0: NBS growth rates, live inputs of G3 (owner-approved) -------
+  CN_IND_PROD_YOY:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_IND_PROD_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 17   # NBS monthly data released on the 15th-17th
+    original_source: >
+      NBS industrial value-added YoY growth (%) via AKShare (access layer,
+      upstream eastmoney RPT_ECONOMY_INDUS_GROW). V1.6A G0: LIVE input of
+      G3 Hard Activity (owner-approved switch from OECD volume indices,
+      whose SDMX series carry base-rebasing steps that corrupt yoy(12)).
+
+  CN_RETAIL_SALES_YOY:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_RETAIL_SALES_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 17
+    original_source: >
+      NBS total retail sales YoY growth (%) via AKShare (access layer,
+      upstream eastmoney RPT_ECONOMY_TOTAL_RETAIL). V1.6A G0: live input of
+      G3 Hard Activity (declared second priority behind industrial output).
+
   CN_TSF_TOTAL:
     primary: pbc
     fallback: akshare
@@ -448,3 +491,89 @@ series:
     original_source: >
       NY Fed Global Supply Chain Pressure Index (PCA model output; the whole
       history is revised on each release - full_refresh + vintage snapshots)
+
+  # --- V1.6A Market Confirmation layer (Market Data Readiness) --------------
+  # Daily market series for M1-M6. Direction conventions and computation
+  # windows live in config/market.yaml; this registry only routes data.
+  CSI300:
+    # primary is the externally verified push2his endpoint; on hosts where
+    # the local proxy blocks it the updater falls back to the sina-backed
+    # AKShare route and reports FALLBACK_USED explicitly.
+    primary: eastmoney
+    fallback: akshare
+    provider_code: "1.000300"
+    fallback_code: "sh000300"
+    frequency: daily
+    category: market
+    max_staleness_days: 7
+    freshness:
+      expected_release_lag_days: 0
+    original_source: >
+      CSI 300 index daily close. Primary: eastmoney push2his (secid
+      1.000300, verified 2026-08-30). Fallback: sina via AKShare
+      stock_zh_index_daily. Replaces the retired V1.2 route (AKShare
+      index_zh_a_hist, eastmoney push2 backend, blocked on this host).
+    manual_instructions: >
+      Export CSI300 closes from Wind to data/inbox/wind/ and run
+      python scripts/import_wind.py <file>
+
+  HSI:
+    primary: eastmoney
+    fallback: akshare
+    provider_code: "100.HSI"
+    fallback_code: "HSI"
+    frequency: daily
+    category: market
+    max_staleness_days: 7
+    freshness:
+      expected_release_lag_days: 0
+    original_source: >
+      Hang Seng Index daily close, PRICE index (not total return - documented
+      limitation). Primary: eastmoney push2his (secid 100.HSI, verified
+      2026-08-30). Fallback: sina via AKShare stock_hk_index_daily_sina
+      (history from 2013).
+
+  COPPER_PRICE:
+    # M6 proxy selection (decision documented in the V1.6A handoff): LME 3M
+    # copper is a continuously rolled 3-month FORWARD quote - no main-contract
+    # roll jumps - so the frozen transform whitelist (pct_change/momentum/
+    # percentile) is valid without ratio adjustment. SHFE CU0 was rejected
+    # for this window: its roll gaps would require a new back-adjustment
+    # transform (frozen-whitelist change, out of scope). Limitations: USD
+    # net price (FX embedded - M5/X2 cover the dollar), London calendar with
+    # T+1 morning availability (release lag 1 day).
+    primary: akshare
+    provider_code: "CAD"
+    frequency: daily
+    category: market
+    max_staleness_days: 7
+    freshness:
+      expected_release_lag_days: 1   # LME close visible in CN the next morning
+    original_source: >
+      LME 3M copper daily close (USD/ton, offshore net price) via AKShare
+      futures_foreign_hist (sina GlobalFuturesService, verified 2026-08-30;
+      history from 2016-08-30).
+
+  CN_AAA_CREDIT_SPREAD:
+    # M4: ChinaBond AAA credit spread, derived same-source inside the adapter:
+    # MTN AAA 3Y minus CGB 3Y from one historyQuery payload. Registers the
+    # REAL spread series (the V0 fixture only carried a synthetic AA+
+    # industrial spread under CN_CREDIT_SPREAD, synthetic-isolated).
+    primary: chinabond
+    fallback: wind_manual
+    provider_code: "AAA_MTN_SPREAD_3Y"
+    frequency: daily
+    category: market
+    max_staleness_days: 7
+    freshness:
+      expected_release_lag_days: 0   # valuation fixed at 17:30-18:00 CST
+    original_source: >
+      ChinaBond AAA credit spread (percent): 中债中短期票据收益率曲线(AAA) 3Y
+      minus 中债国债收益率曲线 3Y, both legs from the official
+      cbweb-pbc-web/pbc/historyQuery table (verified 2026-08-30; 2026-08-28
+      value 0.4157 = 41.57bp matches the research archive). Derived in the
+      adapter from two same-source official curves (derived-series precedent
+      pbc.py). History from 2006-12-25 in <=360-day segments.
+    manual_instructions: >
+      Export 中债AAA中短期票据3Y and 国债3Y yields from Wind to data/inbox/wind/
+      and run python scripts/import_wind.py <file>

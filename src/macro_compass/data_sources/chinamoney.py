@@ -151,6 +151,14 @@ DR007_CSV_URL = (
 # column layout (0-based): 0 date, 6 DR001, 7 DR007, 8 DR014
 DR007_COLUMNS = {"DR001": 6, "DR007": 7, "DR014": 8}
 
+# V1.6A: CcprHisNew rejects spans beyond ~1 year (verified 2026-08-30: a 1y
+# window returns ~245 records, longer spans return none). Initial/backfill
+# fetches therefore walk the parity history in year segments; the anchor is
+# a declared prior (deep daily parity history for the M5 percentile window)
+# rather than the API's absolute first record.
+PARITY_HISTORY_START = "2016-01-01"
+PARITY_MAX_SPAN_DAYS = 360
+
 
 def parse_dr007_csv(text: str, code: str) -> tuple[list, list]:
     """Parse the repo-rate chart CSV into (dates, values) for ``code``."""
@@ -206,16 +214,44 @@ class ChinaMoneyAdapter(DataSourceAdapter):
         if series_id.startswith("CN_DR") or series_id.startswith("CN_FDR"):
             return self._fetch_dr007(series_id, spec)
         currency = self._require_code(series_id)
-        text = fetch_ccpr_pages(
-            currency, start_date, end_date, timeout=self.provider_spec.timeout_seconds
-        )
-        dates, values = parse_ccpr_json(text, currency)
-        if not dates:
+        end = pd.Timestamp(end_date) if end_date is not None else pd.Timestamp.now()
+        if start_date is not None:
+            segments = [(pd.Timestamp(start_date), end)]
+        else:
+            segments = []
+            cursor = pd.Timestamp(PARITY_HISTORY_START)
+            while cursor <= end:
+                segment_end = min(cursor + pd.Timedelta(days=PARITY_MAX_SPAN_DAYS), end)
+                segments.append((cursor, segment_end))
+                cursor = segment_end + pd.Timedelta(days=1)
+
+        dates: list = []
+        values: list = []
+        for segment_start, segment_end in segments:
+            text = fetch_ccpr_pages(
+                currency,
+                segment_start,
+                segment_end,
+                timeout=self.provider_spec.timeout_seconds,
+            )
+            seg_dates, seg_values = parse_ccpr_json(text, currency)
+            dates.extend(seg_dates)
+            values.extend(seg_values)
+            if len(segments) > 1:
+                time.sleep(2)  # the WAF throttles rapid repeat requests
+        if start_date is not None:
+            start = pd.Timestamp(start_date).date()
+            keep = [i for i, d in enumerate(dates) if d >= start]
+            dates = [dates[i] for i in keep]
+            values = [values[i] for i in keep]
+        # later pages can repeat a date already seen: latest value wins
+        by_date = dict(sorted(zip(dates, values), key=lambda pair: pair[0]))
+        if not by_date:
             raise FetchError(f"ChinaMoney returned no records for '{currency}'")
         return build_canonical_frame(
             series_id,
-            dates,
-            values,
+            list(by_date.keys()),
+            list(by_date.values()),
             provider=self.provider_id,
             source_file=CCPR_URL,
             series_name=series_id,

@@ -327,6 +327,30 @@ CN_PRIVATE_TSF_YOY:
   weight: 1.0
   enabled: true
 
+# --- V1.6A G0: NBS growth-rate series, live inputs of G3 Hard Activity ------
+# NBS publishes month-over-12-month growth rates (percent) for industrial
+# value added and total retail sales; the OECD volume indices remain
+# registered as G3's declared fallback / historical backfill.
+CN_IND_PROD_YOY:
+  name: 规模以上工业增加值当月同比
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+CN_RETAIL_SALES_YOY:
+  name: 社会消费品零售总额当月同比
+  category: macro
+  factor: growth
+  frequency: monthly
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
 HSI:
   name: 恒生指数
   category: market
@@ -335,11 +359,11 @@ HSI:
   enabled: true
 
 CN_AAA_CREDIT_SPREAD:
-  name: 信用利差(AAA产业)
-  category: macro
+  name: 信用利差(AAA中短票-国债,3年)
+  category: market
   factor: credit
-  frequency: monthly
-  unit: bp
+  frequency: daily
+  unit: percent
   direction: negative
   weight: 1.0
   enabled: true

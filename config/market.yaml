@@ -1,0 +1,102 @@
+# V1.6A Market Confirmation configuration.
+#
+# This file holds everything the Market Confirmation layer needs beyond the
+# signals.yaml declarations (which stay untouched: layer, mechanism, input
+# series binding): per-signal direction conventions, computation windows,
+# divergence thresholds and the macro reference factors each market signal
+# should confirm. All numbers are DECLARED PRIORS set by hand - never fitted,
+# never searched (MASTER SPEC section 2/11).
+#
+# Direction convention (the documented, explicit answer to "which way is a
+# rising series good?"). `direction: positive` means a RISING raw series
+# supports the market read; `negative` means a rising raw series argues
+# against it. The same convention orients the rolling percentile
+# (negative-direction signals use 1 - percentile, so adj_percentile > 0.5
+# always means "supportive"):
+#
+#   M1 CSI 300            positive  - index up = onshore equity bull
+#   M2 Hang Seng Index    positive  - index up = offshore risk appetite up
+#   M3 China 10Y Yield    negative  - V1 DECLARATION: yield DOWN = easing /
+#                                     bond-bull direction (the task-spec v1
+#                                     convention). Documented limitation: a
+#                                     yield fall can also price deteriorating
+#                                     growth rather than easing - the raw
+#                                     basis and percentile are reported so
+#                                     the context stays visible.
+#   M4 AAA Credit Spread  negative  - spread widening = credit risk appetite
+#                                     deteriorating
+#   M5 USD/CNY            negative  - USDCNY up = CNY depreciation = domestic
+#                                     financial conditions weakening
+#   M6 Copper (LME 3M)    positive  - commodity up = global industrial demand
+#                                     / reflation read confirmed
+#
+# Metric bases (both are frozen transform-whitelist steps):
+#   move: pct_change - relative change (indices, FX, commodity)
+#   move: delta      - absolute change in percent points (yields, spreads)
+#
+# Market direction (Phase 3) is decided ONLY from the 6M trend vs its
+# threshold, confirmed by the 3M move not contradicting the sign; the 1M
+# move and the (oriented) percentile are reported as context and never
+# silently override the trend call.
+
+version: 1
+
+signals:
+  M1:
+    direction: positive
+    move: pct_change
+    windows: {move_1m: 21, move_3m: 63, trend_6m: 126, percentile: 250}
+    thresholds: {trend_6m: 0.05}          # 5% over ~6 months = directional
+    macro_reference: [growth, domestic_financial]
+  M2:
+    direction: positive
+    move: pct_change
+    windows: {move_1m: 21, move_3m: 63, trend_6m: 126, percentile: 250}
+    thresholds: {trend_6m: 0.05}
+    macro_reference: [growth, global_financial]
+  M3:
+    direction: negative                   # yield DOWN = easing / bull (v1)
+    move: delta                           # percent points
+    windows: {move_1m: 21, move_3m: 63, trend_6m: 126, percentile: 250}
+    thresholds: {trend_6m: 0.20}          # 20bp over ~6 months = directional
+    macro_reference: [growth, inflation]
+  M4:
+    direction: negative
+    move: delta                           # percent points of spread
+    windows: {move_1m: 21, move_3m: 63, trend_6m: 126, percentile: 250}
+    thresholds: {trend_6m: 0.15}          # 15bp over ~6 months
+    macro_reference: [domestic_financial]
+  M5:
+    direction: negative
+    move: pct_change
+    windows: {move_1m: 21, move_3m: 63, trend_6m: 126, percentile: 250}
+    thresholds: {trend_6m: 0.02}          # 2% FX move over ~6 months
+    macro_reference: [domestic_financial, global_financial]
+  M6:
+    direction: positive
+    move: pct_change
+    windows: {move_1m: 21, move_3m: 63, trend_6m: 126, percentile: 250}
+    thresholds: {trend_6m: 0.05}
+    macro_reference: [growth, inflation]
+
+# ---------------------------------------------------------------------------
+# Divergence states (Phase 3), decided per market signal:
+#
+#   CONFIRMED_POSITIVE        macro_direction +1 and market_direction +1
+#   CONFIRMED_NEGATIVE        macro_direction -1 and market_direction -1
+#   POSITIVE_MACRO_DIVERGENCE macro_direction +1 but the market does NOT
+#                             confirm it (market_direction -1)
+#   NEGATIVE_MACRO_DIVERGENCE macro_direction -1 but the market does NOT
+#                             confirm it (market_direction +1)
+#   MIXED                     either side is undirected (0 / not computable)
+#
+# Naming convention: the divergence is named after the macro direction it
+# fails to confirm. Divergence is a confirmation-layer observation only -
+# it is never translated into buy/sell signals or position advice.
+#
+# macro_direction: the mean of the reference factors' latest scores
+# (macro/factors.py outputs - the market layer reads factor OUTPUTS and
+# never raw series), signed beyond macro_score, else 0. When no reference
+# factor has a computable score the macro direction is 0 (MIXED state).
+thresholds:
+  macro_score: 0.10   # |mean reference factor score| beyond = macro directional
