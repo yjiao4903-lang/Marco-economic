@@ -50,16 +50,23 @@ score_mapping:
     G2: {level: 2.0, momentum: 3.0}     # PMI gap in index points; monthly
                                         # gap deltas reach ~3pp (V1.5D review)
     G3: {level: 0.20, momentum: 0.10}   # yoy growth of IP / retail volume
-    G4: {level: 10.0, momentum: 5.0}    # cumulative yoy in PERCENT (NBS
-                                        # publishes 11.8, not 0.118)
-    G5: {level: 15.0, momentum: 10.0}   # export yoy in PERCENT (OECD series
-                                        # stores 4.2, not 0.042)
+    G4: {level: 15.0, momentum: 5.0}    # cumulative yoy in PERCENT (NBS
+                                        # publishes 11.8, not 0.118);
+                                        # v0.4c review: 10->15 (median
+                                        # cumulative yoy ~-12pp, clip 67%->ok)
+    G5: {level: 20.0, momentum: 10.0}   # export yoy in PERCENT (OECD series
+                                        # stores 4.2, not 0.042);
+                                        # v0.4c review: 15->20 (historical
+                                        # outliers 1990s/covid pinned the
+                                        # pre-clip score, clip 28%->low)
     I1: {momentum: 0.30}                # level basis is a percentile (no scale)
     I2: {momentum: 0.30}
     I3: {momentum: 0.30}
     D1: {momentum: 0.30}                # level = percentile of DR007-policy spread
     D2: {level: 0.10, momentum: 0.05}   # private credit yoy
-    D3: {level: 2.0, momentum: 1.0}     # M2 yoy - private TSF yoy (pp)
+    D3: {level: 4.0, momentum: 1.0}     # M2 yoy - private TSF yoy (pp);
+                                        # v0.4c review: 2->4 (typical gap
+                                        # 2-4pp; 2.0 pinned every reading)
     D4: {level: 0.30, momentum: 0.15}   # gov bond financing yoy
     X1: {momentum: 0.30}                # level = percentile of real yield
     X2: {momentum: 0.30}

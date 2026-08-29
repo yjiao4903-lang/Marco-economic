@@ -486,9 +486,18 @@ def _compute_fallback(
     spec, series, available_ids, status, combination, provenance, sources,
     macro_config, today, neutral, direction, zscore_clip,
 ) -> SignalComputation:
-    """combination: fallback - use the first input with data (declared
-    priority order). Coverage still reports the declared-input share."""
-    chosen = available_ids[0]
+    """combination: fallback - use the first input (declared priority order)
+    that can actually produce a score: an input whose history satisfies the
+    declared minimum history wins over an input that would leave the signal
+    in WARMUP (v0.4c Task 1: core CPI present but short must not block the
+    declared headline fallback). If no input satisfies the minimum, the
+    first input with data is used and the signal reports WARMUP.
+    Coverage still reports the declared-input share."""
+    required_history = _required_history(spec)
+    chosen = next(
+        (sid for sid in available_ids if len(series[sid]) >= required_history),
+        available_ids[0],
+    )
     values = series[chosen]
 
     level_basis = _level_basis(values, spec)

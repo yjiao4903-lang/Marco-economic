@@ -62,6 +62,12 @@ _VALUE_RE = re.compile(r"新建商品房销售额\s*[\d,，.\s]+亿元\s*[，,]\
 _CORE_CPI_RE = re.compile(
     r"核心CPI[^。]{0,80}?同比(上涨|增长|下降)\s*(\d+(?:\.\d+)?)\s*%"
 )
+# v0.4c Task 1: the official CPI release table itself carries the core CPI
+# row ("其中：不包括食品和能源  环比  同比  累计同比") - no need to wait for
+# the unstable 解读 articles. Values may be negative or blank ("-").
+_CORE_TABLE_ROW_RE = re.compile(
+    r"不包括食品和能源\s+(-?[\d.]+|-)\s+(-?[\d.]+|-)(?:\s+(-?[\d.]+|-))?"
+)
 
 _PROVIDER_CODES = {
     "PMI_NEW_ORDERS": "PMI",
@@ -157,15 +163,22 @@ def parse_property_article(title: str, text: str) -> dict[str, list[tuple[pd.Tim
 
 
 def parse_cpi_article(title: str, text: str) -> list[tuple[pd.Timestamp, float]]:
-    """Core CPI YoY from a CPI release / interpretation article."""
+    """Core CPI YoY from the official CPI release table (primary) or the
+    interpretation-article sentence (fallback)."""
     title_match = _TITLE_PATTERNS["CPI"].search(title)
     if not title_match:
         raise FetchError(f"NBS CPI article title not parseable: {title!r}")
-    core = _CORE_CPI_RE.search(text)
-    if not core:
-        return []
     date = _month_end(int(title_match.group("year")), int(title_match.group("month")))
-    return [(date, _signed(core.group(1), float(core.group(2))))]
+    row = _CORE_TABLE_ROW_RE.search(text)
+    if row:
+        yoy_text = row.group(2)
+        if yoy_text and yoy_text != "-":
+            return [(date, float(yoy_text))]
+        return []
+    core = _CORE_CPI_RE.search(text)
+    if core:
+        return [(date, _signed(core.group(1), float(core.group(2))))]
+    return []
 
 
 _FETCH_CACHE: dict[str, str] = {}

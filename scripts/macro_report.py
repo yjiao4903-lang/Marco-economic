@@ -42,7 +42,7 @@ from macro_compass.macro import (  # noqa: E402
 )
 from macro_compass.signals import (  # noqa: E402
     assess_availability,
-    compute_core_signals,
+    load_core_computations,
     load_signal_registry,
 )
 from macro_compass.signals.engine import SignalComputation  # noqa: E402
@@ -104,13 +104,13 @@ def main() -> None:
     macro_config = load_macro_config(paths.MACRO_YAML)
     sources_cfg = load_data_sources_config(paths.DATA_SOURCES_YAML, indicator_registry=indicators)
 
-    canonical = _load_canonical()
-    canonical = filter_synthetic(
-        canonical, macro_config.get("synthetic_markers") or [],
-        allow_synthetic=args.allow_synthetic,
+    snapshot = load_core_computations(
+        registry, macro_config, allow_synthetic=args.allow_synthetic, today=today
     )
-    series = _series_from_canonical(canonical)
-    availability = assess_availability(registry, set(series))
+    canonical = snapshot.canonical
+    series = snapshot.series
+    availability = snapshot.availability
+
 
     markers = macro_config.get("synthetic_markers") or []
     provenance_by_series = classify_provenance(
@@ -127,14 +127,7 @@ def main() -> None:
         series_id: spec.max_staleness_days for series_id, spec in sources_cfg.series.items()
     }
 
-    computations = compute_core_signals(
-        registry,
-        series,
-        macro_config,
-        today,
-        input_provenance=provenance_by_series,
-        input_sources=source_by_series,
-    )
+    computations = snapshot.computations
 
     print(f"=== Macro Engine snapshot - generated {today.date()} ===")
     print(

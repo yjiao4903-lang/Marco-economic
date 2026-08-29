@@ -83,6 +83,11 @@ def fetch_macro_series(akshare, code: str) -> tuple[list, list]:
         col = "货币和准货币(M2)-同比增长"
         dates = [_month_cn(v) for v in frame["月份"]]
         values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_CPI_YOY":
+        frame = akshare.macro_china_cpi()
+        col = "全国-同比增长"
+        dates = [_month_cn(v) for v in frame["月份"]]
+        values = pd.to_numeric(frame[col], errors="coerce")
     elif code == "CN_TSF_TOTAL":
         frame = akshare.macro_china_shrzgm()
         col = "社会融资规模增量"

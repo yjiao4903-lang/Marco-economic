@@ -14,6 +14,7 @@ from macro_compass.signals.engine import (
     map_score,
     resolve_combination,
 )
+from macro_compass.signals.status import load_core_computations, resolve_signal_status
 from macro_compass.signals.registry import (
     DECLARED,
     MISSING_INPUT,
@@ -42,6 +43,8 @@ __all__ = [
     "compute_core_signals",
     "compute_signal",
     "load_signal_registry",
+    "load_core_computations",
+    "resolve_signal_status",
     "map_score",
     "resolve_combination",
 ]

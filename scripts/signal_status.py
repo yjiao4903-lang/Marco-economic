@@ -1,17 +1,18 @@
-"""V1.3 signal registry status: coverage + per-signal input availability.
+"""V1.3/V1.5E signal registry status: per-signal availability + engine status.
 
-Validates config/signals.yaml against config/indicators.yaml (unknown
-series_id aborts with a clear error), assesses every signal's input
-availability against canonical parquet, and writes the missing-series manifest
-for later acquisition (data/local/missing_series.csv). Read-only except for
-that manifest.
+Loads the production data pipeline ONCE via the shared runtime
+(``signals.status.load_core_computations``) and reports the resolved status
+(READY / WARMUP / PARTIAL / MISSING_INPUT / DECLARED) for every signal -
+identical to macro_report and signal_quality by construction. Also writes the
+missing-series manifest for later acquisition (data/local/missing_series.csv).
 
 Usage:
-    python scripts/signal_status.py
+    python scripts/signal_status.py [--allow-synthetic]
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import sys
 from pathlib import Path
@@ -21,17 +22,14 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from macro_compass import paths  # noqa: E402
 from macro_compass.config import load_indicator_config  # noqa: E402
+from macro_compass.macro import load_macro_config  # noqa: E402
 from macro_compass.signals import (  # noqa: E402
-    assess_availability,
+    load_core_computations,
     load_signal_registry,
 )
-from macro_compass.storage import canonical_store  # noqa: E402
-from macro_compass.synthetic_guard import filter_synthetic  # noqa: E402
 
 
 def main() -> None:
-    import argparse
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--allow-synthetic",
@@ -40,25 +38,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    import yaml as _yaml
-
-    markers = []
-    if paths.MACRO_YAML.exists():
-        macro_cfg = _yaml.safe_load(paths.MACRO_YAML.read_text(encoding="utf-8")) or {}
-        markers = macro_cfg.get("synthetic_markers") or []
-
     indicators = load_indicator_config(paths.INDICATORS_YAML)
     registry = load_signal_registry(paths.SIGNALS_YAML, indicators_registry=indicators)
+    macro_config = load_macro_config(paths.MACRO_YAML)
 
-    available: set[str] = set()
-    for category in ("macro", "market"):
-        frame = filter_synthetic(
-            canonical_store.read_canonical(category), markers, args.allow_synthetic
-        )
-        if not frame.empty:
-            available.update(frame["series_id"].unique())
-
-    availability = assess_availability(registry, available)
+    snapshot = load_core_computations(
+        registry, macro_config, allow_synthetic=args.allow_synthetic
+    )
+    availability = snapshot.availability
+    resolved = snapshot.resolved
 
     layers = (("core", "Core Fundamental"), ("market", "Market Confirmation"),
               ("structural", "Structural Risk"))
@@ -70,15 +58,16 @@ def main() -> None:
             missing = ", ".join(state.missing) if state.missing else "-"
             print(
                 f"  {signal_id:>3} {spec.name:<40} factor={spec.factor or '-':<20} "
-                f"{state.status:<13} missing: {missing}"
+                f"{resolved[signal_id]:<13} missing: {missing}"
             )
 
     core_ids = list(registry.core)
-    ready = sum(1 for s in core_ids if availability[s].status == "READY")
-    partial = sum(1 for s in core_ids if availability[s].status == "PARTIAL")
-    print(f"\nCore signals READY: {ready}/15, PARTIAL: {partial}")
+    ready = sum(1 for s in core_ids if resolved[s] == "READY")
+    warmup = sum(1 for s in core_ids if resolved[s] == "WARMUP")
+    partial = sum(1 for s in core_ids if resolved[s] == "PARTIAL")
+    print(f"\nCore signals READY: {ready}/15, WARMUP: {warmup}, PARTIAL: {partial}")
 
-    missing = registry.missing_series(available)
+    missing = registry.missing_series(snapshot.available_series)
     paths.LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     with paths.MISSING_SERIES_CSV.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)

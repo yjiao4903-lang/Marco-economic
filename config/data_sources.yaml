@@ -71,6 +71,14 @@ providers:
   manual_series:
     module: manual_series
     adapter_class: ManualSeriesAdapter
+  treasury:
+    module: treasury
+    adapter_class: TreasuryAdapter
+    timeout_seconds: 45
+  fed_h10:
+    module: fedh10
+    adapter_class: FedH10Adapter
+    timeout_seconds: 30
 
 series:
   # --- OECD (V1.2A Batch A chain: CLI / CPI / production / retail / exports)
@@ -80,6 +88,10 @@ series:
     frequency: monthly
     category: macro
     max_staleness_days: 90
+    update_policy:
+      mode: replace_window   # OECD revises recent months
+    freshness:
+      expected_release_lag_days: 50
     original_source: OECD Composite Leading Indicators (CLI), China
 
   CHN_CPI_INDEX:
@@ -88,6 +100,10 @@ series:
     frequency: monthly
     category: macro
     max_staleness_days: 90
+    update_policy:
+      mode: replace_window   # OECD revises recent months
+    freshness:
+      expected_release_lag_days: 50
     original_source: OECD Main Economic Indicators, China CPI index
 
   CHN_IND_PROD_INDEX:
@@ -96,6 +112,10 @@ series:
     frequency: monthly
     category: macro
     max_staleness_days: 90
+    update_policy:
+      mode: replace_window   # OECD revises recent months
+    freshness:
+      expected_release_lag_days: 50
     original_source: OECD Main Economic Indicators, China industrial production
 
   CHN_RETAIL_SALES_INDEX:
@@ -104,6 +124,10 @@ series:
     frequency: monthly
     category: macro
     max_staleness_days: 90
+    update_policy:
+      mode: replace_window   # OECD revises recent months
+    freshness:
+      expected_release_lag_days: 50
     original_source: OECD Main Economic Indicators, China retail sales volume
 
   CHN_EXPORT_YOY:
@@ -112,6 +136,10 @@ series:
     frequency: monthly
     category: macro
     max_staleness_days: 90
+    update_policy:
+      mode: replace_window   # OECD revises recent months
+    freshness:
+      expected_release_lag_days: 50
     original_source: OECD Main Economic Indicators, China export growth
 
   # --- ChinaMoney (V1.2A)
@@ -171,29 +199,48 @@ series:
     frequency: weekly
     category: macro
     max_staleness_days: 21
+    update_policy:
+      mode: replace_window   # light revisions of recent weeks (round-2 calendar)
+    freshness:
+      expected_release_lag_days: 5
     original_source: Chicago Fed Adjusted National Financial Conditions Index
 
   # --- FRED (V1.2A)
   US_REAL_YIELD_10Y:
-    primary: fred
-    fallback: wind_manual
-    provider_code: "DFII10"
+    # v0.4c Task 2: Treasury par real yield is PRIMARY (same underlying data
+    # FRED redistributes - DFII10's source IS the Treasury curve). Switching
+    # is gated on scripts/overlap_check.py >= 60 common trading days vs FRED
+    # DFII10; the check is currently BLOCKED by the FRED network blocker and
+    # must PASS before FRED rows are ever merged into this series.
+    primary: treasury
+    fallback: fred
+    provider_code: "10"
+    fallback_code: "DFII10"
     frequency: daily
     category: macro
     max_staleness_days: 14
-    original_source: US Treasury 10Y TIPS yield via FRED
-    manual_instructions: >
-      Download DFII10 from fred.stlouisfed.org (CSV) or export from Wind and
-      run python scripts/import_wind.py <file>
+    update_policy:
+      mode: append
+    freshness:
+      expected_release_lag_days: 1
+    original_source: >
+      U.S. Treasury Daily Treasury Par Real Yield Curve, 10-year (percent).
+      Fallback FRED DFII10 (validation/fallback only, same definition)
 
   USD_BROAD:
     primary: fred
-    fallback: wind_manual
+    fallback: fed_h10
     provider_code: "DTWEXBGS"
+    fallback_code: "BROAD"
     frequency: daily
     category: macro
     max_staleness_days: 14
-    original_source: Fed broad trade-weighted USD index via FRED
+    freshness:
+      expected_release_lag_days: 4   # H.10 weekly release covers the prior week
+    original_source: >
+      Fed broad trade-weighted USD index (Jan 2006 = 100). Primary FRED
+      DTWEXBGS; fallback Fed H.10 release page (current week only - the DDP
+      download program is being retired, so no long-term DDP dependency)
     manual_instructions: >
       Download DTWEXBGS from fred.stlouisfed.org (CSV) or export from Wind and
       run python scripts/import_wind.py <file>
@@ -222,6 +269,19 @@ series:
       Export PMI new orders (PMI:新订单) from Wind to data/inbox/wind/, add the
       column to config/wind_mapping.yaml, then run
       python scripts/import_wind.py <file>
+
+  CN_CPI_YOY:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_CPI_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 11
+    original_source: NBS headline CPI YoY via AKShare (access layer);
+      I1's declared FALLBACK input - core CPI keeps its own series_id
+      (CN_CORE_CPI_YOY) and is never silently overwritten by headline data
 
   CHN_PMI_INPUT_PRICE:
     primary: nbs
@@ -325,6 +385,22 @@ series:
     original_source: >
       PBOC monthly financial statistics report, government bond net financing
       year-to-date cumulative converted to monthly flow (cumulative_to_monthly)
+
+  CN_PRIVATE_TSF_YOY:
+    # v0.4c Task 5 (D3 spike): DERIVED series - private sector stock YoY
+    # computed from the report's AFRE stock and government bond stock with
+    # their published YoY rates. Precision ~+/-0.1pp (published rounding).
+    primary: pbc
+    provider_code: "PRIVATE_TSF_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    freshness:
+      expected_release_lag_days: 15
+    original_source: >
+      Derived: private TSF stock YoY = (AFRE stock - gov bond stock) growth,
+      from PBOC monthly financial statistics report stock paragraph; standard
+      definition per docs/research round-1 item 9 (VERIFIED logic)
 
   # --- Domestic financial conditions (V1.2C) --------------------------------
   CN_DR007:

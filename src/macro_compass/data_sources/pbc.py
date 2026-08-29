@@ -158,6 +158,52 @@ def parse_report_cumulative(text: str) -> dict[str, float | None]:
     return result
 
 
+
+
+# ---------------------------------------------------------------------------
+# v0.4c Task 5 (D3 spike, time-boxed): the monthly report's stock paragraph
+# carries AFRE total stock + YoY and government bond stock + YoY, from which
+# the private-sector TSF stock YoY is DERIVED (standard definition, verified
+# in docs/research round-1 item 9):
+#   private_stock_t  = afre_t - gov_t
+#   private_stock_t-12 = afre_t/(1+afre_yoy) - gov_t/(1+gov_yoy)
+#   private_yoy = private_stock_t / private_stock_t-12 - 1
+# Precision is limited by the published 2-decimal trillion-yuan rounding
+# (~+/-0.1pp); documented in data_sources.yaml original_source.
+
+_STOCK_RE = re.compile(
+    r"社会融资规模存量为\s*([\d.]+)\s*万亿元，同比增长\s*(-?[\d.]+)%"
+)
+_GOV_STOCK_RE = re.compile(
+    r"政府债券余额\s*([\d.]+)\s*万亿元，同比增长\s*(-?[\d.]+)%"
+)
+
+
+def parse_report_stocks(text: str) -> dict[str, float | None] | None:
+    """Extract AFRE / government bond stock (万亿元) and YoY (%) from one report."""
+    afre = _STOCK_RE.search(text)
+    gov = _GOV_STOCK_RE.search(text)
+    if not afre or not gov:
+        return None
+    return {
+        "afre_stock": float(afre.group(1)),
+        "afre_yoy": float(afre.group(2)),
+        "gov_stock": float(gov.group(1)),
+        "gov_yoy": float(gov.group(2)),
+    }
+
+
+def derive_private_tsf_yoy(stocks: dict[str, float]) -> float:
+    """Private TSF stock YoY (%) derived from AFRE and government bond stocks."""
+    afre, afre_g = stocks["afre_stock"], stocks["afre_yoy"]
+    gov, gov_g = stocks["gov_stock"], stocks["gov_yoy"]
+    private = afre - gov
+    private_prev = afre / (1.0 + afre_g / 100.0) - gov / (1.0 + gov_g / 100.0)
+    if private_prev <= 0:
+        raise ValueError("derived previous private stock is not positive")
+    return (private / private_prev - 1.0) * 100.0
+
+
 class PbcAdapter(DataSourceAdapter):
     """Dispatches on ``provider_code``:
 
@@ -178,6 +224,8 @@ class PbcAdapter(DataSourceAdapter):
             return self._fetch_omo(series_id, spec)
         if code in ("TSF_TOTAL", "GOV_BOND_FINANCING"):
             return self._fetch_stats(series_id, spec, code)
+        if code == "PRIVATE_TSF_YOY":
+            return self._fetch_private_tsf_yoy(series_id, spec)
         raise FetchError(f"PBOC adapter has no route for provider_code '{code}'")
 
     def _fetch_lpr(self, series_id, spec, code) -> pd.DataFrame:
@@ -228,6 +276,47 @@ class PbcAdapter(DataSourceAdapter):
             [seen[d] for d in dates],
             provider=self.provider_id,
             source_file=listing_url,
+            series_name=series_id,
+            unit="%",
+            frequency=spec.frequency,
+            category=spec.category,
+        )
+
+    def _fetch_private_tsf_yoy(self, series_id, spec) -> pd.DataFrame:
+        """D3 spike output: derived private TSF stock YoY (%) per report month."""
+        timeout = self.provider_spec.timeout_seconds
+        listing_html = http_get(STATS_LISTING_URL, timeout=timeout)
+        report_urls: dict[str, str] = {
+            title: url for title, url in parse_stats_listing(listing_html, STATS_LISTING_URL)
+        }
+        observations: list[tuple[pd.Timestamp, float]] = []
+        for title, url in report_urls.items():
+            title_match = _REPORT_TITLE_RE.search(title)
+            if not title_match:
+                continue
+            year = int(title_match.group(1))
+            month = int(title_match.group(2)) if title_match.group(2) else 6
+            html = http_get(url, timeout=timeout)
+            text = re.sub(r"<[^>]+>", " ", html)
+            text = re.sub(r"\s+", " ", text)
+            stocks = parse_report_stocks(text)
+            if stocks is None:
+                continue
+            observations.append(
+                (
+                    pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0),
+                    derive_private_tsf_yoy(stocks),
+                )
+            )
+        if not observations:
+            raise FetchError("PBOC reports contained no derivable private TSF stock YoY")
+        observations.sort(key=lambda obs: obs[0])
+        return build_canonical_frame(
+            series_id,
+            [d.date() for d, _ in observations],
+            [v for _, v in observations],
+            provider=self.provider_id,
+            source_file=STATS_LISTING_URL,
             series_name=series_id,
             unit="%",
             frequency=spec.frequency,

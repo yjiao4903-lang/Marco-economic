@@ -3,13 +3,13 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V1.2C Data Coverage Hardening + V1.5D Signal Quality Gate**（截至 V1.5C 全部冻结）。
-> 数据层 25 条序列自动获取（OECD/FRED/ChicagoFed/NYFed/PBOC/NBS/ChinaMoney/ChinaBond/AKShare），
-> 支持三种更新策略（append / replace_window / full_refresh）与 vintage 快照；
-> 信号引擎 + 宏观因子引擎已就绪，production 计算默认隔离 synthetic 数据。
-> 当前 Core REAL-computable 9/15（Growth 5/5、Inflation 2/3、Domestic 1/4、Global 1/3），
-> Regime 首次输出真实状态；缺口为如实记录的 network/source/history-warmup blocker。
-> 资产评分（V2）、Dashboard（V3）尚未开发。
+> 当前开发阶段：**V1.5E Pre-Market Stabilization（v0.4c）**（V0–V1.5D 全部冻结）。
+> 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
+> ChinaMoney/ChinaBond/AKShare + manual_series），append/replace_window/full_refresh
+> 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
+> 当前 Core **READY 12/15**（Growth 5/5、Inflation 3/3、Domestic 2/4、Global 2/3）；
+> D2/D4 等待用户 Wind 回填文件、X2 等待 FRED 网络恢复（均为真实数据流入中的 WARMUP）。
+> Regime = TRANSITION。资产评分（V2）、Dashboard（V3）尚未开发。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
 ## 目录结构
@@ -90,6 +90,9 @@ python scripts/macro_report.py --today 2026-08-01
 
 # V1.5D 信号质量诊断：status / saturation / warmup / as-of 说明
 python scripts/signal_quality.py                 # 写 data/local/signal_quality.csv
+
+# v0.4c 双源重叠检验（切换序列 primary 前的硬性验收门）
+python scripts/overlap_check.py --series US_REAL_YIELD_10Y --left treasury --right fred
 
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest

@@ -2,11 +2,13 @@
 
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
-**最后人工确认基线：** 2026-08-30  
-**Current Version:** V1.2C Data Coverage Hardening + V1.5D Signal Quality Gate（V0/V1/V1.2/V1.3/V1.5A/V1.5B/V1.5C 已冻结）  
-**当前阶段：** 两个数据质量 Gate 完成。Core REAL-computable 9/15（Growth 5/5、Inflation 2/3、
-Domestic 1/4、Global 1/3），Regime 首次输出真实状态（TRANSITION）。Gate A 覆盖目标 12/15 **未达成**，
-缺口全部为如实记录的 blocker（见 §10），未用 synthetic/缩窗/放宽阈值补水分。
+**最后人工确认基线：** 2026-08-30（v0.4c）  
+**Current Version:** V1.5E Pre-Market Stabilization（v0.4c；V0–V1.5D 全部冻结）  
+**当前阶段：** Core **READY 12/15**（Growth 5/5、Inflation 3/3、Domestic 2/4、Global 2/3），
+WARMUP 3（D2/D4 等用户 Wind 回填文件、X2 等 FRED 网络恢复——真实数据均已流入）。
+Economic Coverage Gate（Growth 5/5 + Inflation 3/3 + Domestic ≥3/4 + Global 3/3）**未完全达成**：
+Domestic 差 1（等待 wind_backfill_tsf.csv）、Global 差 1（X2 历史，FRED 网络阻塞）。
+Regime = TRANSITION（growth -0.399 ↓，inflation -0.031 中性带）。
 下一窗口进入 V1.6A Market Confirmation。
 
 ## 1. 已完成
@@ -105,6 +107,42 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
   WARMUP 2（D2/D4），PARTIAL 1（D3），MISSING 3（I1/X1/X2）；Regime = TRANSITION
   （growth −0.409 down，inflation +0.125 neutral）
 
+### V1.5E Pre-Market Stabilization（v0.4c）— DONE（2026-08-30）
+- **P0-1 共享状态解析（架构修复）**：新增 `signals/status.py`
+  （`resolve_signal_status` + `load_core_computations` 生产数据管线），
+  signal_status / macro_report / signal_quality 三入口全部复用——
+  D2/D4 在同一 as-of 下状态一致（WARMUP），禁止各自复制逻辑。
+- **P0-2 I1 Consumer Inflation READY**：核心 CPI 不再依赖解读栏目——NBS 正式 CPI 发布页
+  表格含「不包括食品和能源」行（endpoint 实测：2026-07 同比 0.9）；headline CPI 走
+  AKShare `macro_china_cpi`（223 期）。引擎 fallback 语义精化：优先选**满足声明最小历史**的
+  输入（core 10 期 < window 60 → 自动落到声明的 headline fallback；core 历史自然累积后
+  自动切回），绝不静默把 headline 写进 core 序列（两个 series_id 严格分开）。
+- **P0-3 X1 US 10Y Real Yield READY**：新增 `treasury.py`（U.S. Treasury Daily Par Real
+  Yield Curve，官方 CSV，665 期 2023-2026 已入库）；路由 primary=treasury、fallback=fred
+  （DFII10 定义同源：FRED 即 redistribution of Treasury curve）。
+  **Overlap check（硬性验收项）**：`scripts/overlap_check.py` 已落地并 armed——但 FRED 本机
+  网络 9 次尝试全部超时，check **BLOCKED** 如实输出；网络恢复后必须先 PASS（≥60 共同交易日、
+  |diff|≤0.05）再允许 FRED 行并入该序列。
+- **P0-4 X2 Broad USD WARMUP**：新增 `fedh10.py`（Fed H.10 周发布页 BROAD JAN06=100 行，
+  只解析发布页、不建 DDP 长期架构）；primary 仍为 FRED，H.10 fallback 已实战触发一次
+  （FALLBACK_USED 显式）。X2 5 期 < 250 → WARMUP；FRED 恢复后自动补全历史。
+- **P1-6 D3 spike（time-box 内达成）**：PBOC 月度报告存量段含 AFRE 存量+同比、政府债券
+  存量+同比 → `derive_private_tsf_yoy` 派生私人社融存量同比（验证值 5.63%，±0.1pp 精度
+  已记录）；CN_PRIVATE_TSF_YOY 4 期入库 → **D3 READY**（Spike 结论：可形成稳定自动源）。
+- **P1-7 政策利率持久化验证**：PBC OMO 活动公告已持续写入 canonical（replace_window 只
+  覆盖抓取窗口，MANUAL 台阶历史保留）；新降息 → update_sources 自动持久化，人工维护 ≈ 0，
+  台阶文件仅作历史 bootstrap/emergency fallback。
+- **P1-8 G3 活源评估**：OECD IP/Retail 是**指数**（G3 声明链 yoy(12) 消费指数），NBS/东财
+  只发布**增速**——切换需改 signals.yaml 输入声明（frozen，须负责人批准）。本轮落地
+  OECD replace_window + release-lag 元数据（120 天 STALE 属实保留，不放宽阈值）；
+  活源切换决策留待负责人。
+- **P2-9 饱和度评审完成**：signal_quality 新增 pre-clip 分布段（p50/p95/max/clip rate）。
+  触发 Review：G4（67%）、G5（28%）、D3（100%）——按经济锚点修正 scale：G4 10→15、
+  G5 15→20、D3 2→4（macro.yaml 显式 + 注释含 before/after；不涉及资产收益、不改因子权重）。
+  修正后 clip rate：G4 11%、G5 21%、D3 0%，全部退出 REVIEW。
+- **P1-5 D2/D4 Wind 回填**：依赖用户导出 `wind_backfill_tsf.csv`——**文件未就绪，等待状态**
+  （数据链已就绪：PBOC 增量 replace_window 正常，导入回填文件后 D2/D4 立即 WARMUP→READY）。
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -173,11 +211,12 @@ python scripts/import_wind.py data/fixtures/wind_macro_sample.csv
 python scripts/rebuild_db.py
 python scripts/check_quality.py
 python scripts/update_sources.py [--dry-run | --series ID | --backfill]
+python scripts/overlap_check.py --series S --left P1 --right P2   # 双源重叠检验
 python scripts/signal_status.py
 python scripts/transform_smoke.py [--signal ID | --series ID | --rows N]
 python scripts/macro_report.py [--today YYYY-MM-DD]   # V1.5C 宏观快照（验收主入口）
 python scripts/signal_quality.py                      # V1.5D 信号质量诊断（saturation/warmup）
-python -m pytest          # 163 passed（network 测试默认跳过，-m network opt-in）
+python -m pytest          # 176 passed（network 测试默认跳过，-m network opt-in）
 python -m pytest -m network
 ```
 
@@ -227,18 +266,16 @@ python -m pytest -m network
 
 ```text
 Last Test Result: PASS（python -m pytest，2026-08-30；另有 -m network opt-in 通过）
-Last Test Count: 163 passed, 0 failed（137 基线 + 26：cumulative/parsers/manual/policy/
-  isolation/WARMUP/saturation）
-Last Git Tag: v0.4b-data-quality
+Last Test Count: 176 passed, 0 failed（163 基线 + 13：共享状态/Treasury与H.10解析/
+  核心CPI表格/私人社融派生/fallback历史偏好/overlap比较）
+Last Git Tag: v0.4c-pre-market-stable
 Known Issues: 见第 10 节（Gate A 覆盖 9/15 未达 12/15，缺口与 blocker 分类）
-Modified Files: 新增 src/macro_compass/data_sources/{cumulative,nbs,manual_series}.py、
-  src/macro_compass/synthetic_guard.py、scripts/signal_quality.py、
-  data/manual_series/CN_POLICY_RATE_7D.csv、tests/test_data_quality_gates.py；
-  修改 data_sources/（chicagofed/nyfed/chinamoney/chinabond/pbc/akshare/registry/updater）、
-  storage/canonical_store.py（replace_window/replace_series）、
-  signals/engine.py（WARMUP）、config/data_sources.yaml（全量路由重写）、
-  config/macro.yaml（scale 修正）、scripts/{macro_report,signal_status}.py、
-  tests/data_sources/conftest.py、test_parsers.py、paths.py、README
+Modified Files: 新增 data_sources/{treasury,fedh10}.py、signals/status.py、
+  scripts/overlap_check.py、tests/test_v04c.py；修改 signals/engine.py（fallback
+  历史偏好）、signals/__init__.py、scripts/{signal_status,macro_report,signal_quality}.py
+  （统一走 load_core_computations）、data_sources/pbc.py（D3 派生）、
+  config/data_sources.yaml（treasury/fed_h10/private_tsf 路由 + OECD/ANFCI
+  replace_window + freshness）、config/macro.yaml（G4/G5/D3 scale 修正）、README
 ```
 
 ## 9. 每次窗口结束必须更新
@@ -247,21 +284,18 @@ Modified Files: 新增 src/macro_compass/data_sources/{cumulative,nbs,manual_ser
 
 ## 10. Known Issues（V1.2C/V1.5D 结束时已知）
 
-### Gate A 覆盖缺口（9/15 vs 12/15 目标，blocker 分类如实记录）
-- X1/X2（US_REAL_YIELD_10Y / USD_BROAD）：**network blocker**——FRED 在本机网络间歇可达
-  （本窗口曾一次成功，其余全部 read timeout，curl 同样失败；endpoint 本身已验证正确）。
-  网络恢复后 `python scripts/update_sources.py` 自动补齐，代码无需改动。
-- D2/D4（TSF/政府债券融资）：**history warmup**——数据链已打通（PBOC 月度金融统计数据报告，
-  累计差分为月度流量，replace_window），但报告列表页仅静态暴露最近 ~4 个月（更早月份的
-  列表页为 JS 渲染），yoy(12) 需 13 期 → 每月随报告累积，约 9 个月后自动转 READY。
-  累计差分的历史回填需后续扩展（gov.cn 镜像或 manual 档案），本轮未做。
-- D3：**source blocker**——CN_PRIVATE_TSF_YOY 无自动源（派生需社融存量与政府债券存量
-  月度历史，存量表 JS 渲染不可爬）；保持 PARTIAL + null score。
-- I1：**source blocker（弱）**——核心 CPI 同比只出现在 NBS「数据解读」栏目，标题含作者名
-  不稳定；NBS 发布页路由已配置，出现可解析文章即自动入库；当前 MISSING（synthetic
-  fallback 已被 production 隔离，属预期行为）。
-- CSI300：**environment blocker**——本机代理对 eastmoney push2 间歇不可用（V1.2 既有问题，
-  market 层非本轮 Gate 范围）。
+### Economic Coverage Gate 缺口（12/15 READY vs 14/15 理想）
+- D2/D4（WARMUP→READY 的最后一步）：**等待用户人工导出 `wind_backfill_tsf.csv`**
+  （Total TSF Flow + Government Bond Financing Flow，≥60 个月）。导入数据链已就绪，
+  文件就绪后一次导入即转 READY；未就绪期间保持 WARMUP（真实 PBOC 增量已按月流入），
+  **禁止用其他来源凑数**（任务书协调员补充 3）。
+- X2（WARMUP）：FRED DTWEXBGS **network blocker**（本窗口 9+ 次尝试全部超时）；
+  H.10 fallback 已实战工作（当前周 5 期），FRED 恢复后 update 自动补全历史 → READY。
+- X1 overlap check **BLOCKED**（同 FRED 网络）：`scripts/overlap_check.py` 已 armed，
+  必须在 FRED 行并入 US_REAL_YIELD_10Y 前 PASS（≥60 共同交易日）；当前 canonical 中
+  该序列只有 Treasury 单源，无混源风险。
+- G3 活源切换（OECD→NBS 增速）需改 frozen signals.yaml 输入声明——**待负责人决策**；
+  本轮已加 OECD replace_window + release-lag 元数据，STALE 如实保留。
 
 ### 其他
 
@@ -269,9 +303,8 @@ Modified Files: 新增 src/macro_compass/data_sources/{cumulative,nbs,manual_ser
 - V1.2 既有 Known Issues（FRED 间歇超时、AKShare/代理间歇不可用、ChinaMoney WAF 限流、
   check_quality 混频警告）继续有效，见 git 历史 V1.2 交接记录；本轮 FRED timeout 45→90s
   + updater 一次重试已缓解但未根除。
-- data/manual_series/CN_POLICY_RATE_7D.csv 为人工转录的官方利率台阶（MANUAL 来源），
-  PBOC OMO 路由为 primary 会持续以真实公告覆盖近 20 个交易日；台阶文件的后续维护
-  （新降息时追加台阶）是已知人工维护点。
+- data/manual_series/CN_POLICY_RATE_7D.csv 仅作历史 bootstrap/emergency fallback；
+  PBC OMO live 路由已验证自动持久化（v0.4c P1-7），新降息无需人工追加。
 - AKShare 于本窗口已安装（1.18.94），P3 兜底路由已激活；其接口变更风险（如 repo_rate_hist
   仅支持 ≤2 个月区间、分块抓取）已封装在 adapter 内。
 - 引擎输出契约新增 WARMUP 状态（V1.5D）；ARCHITECTURE §8 十列契约不变。

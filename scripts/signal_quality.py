@@ -178,6 +178,28 @@ def main() -> None:
             }
         )
 
+    print("\n--- Saturation detail (v0.4c Task 8) ---")
+    print("Review trigger: 24M saturation > 25% OR 60M saturation > 15%.")
+    print(
+        f"{'ID':<5}{'pre-clip p50':>13} {'p95 |pre|':>11} {'max |pre|':>11} "
+        f"{'clip rate':>10}   verdict"
+    )
+    for signal_id, spec in registry.core.items():
+        comp = computations[signal_id]
+        if comp.frame.empty:
+            continue
+        pre = _pre_clip_scores(spec, series, macro_config)
+        if pre is None or pre.dropna().empty:
+            continue
+        abs_pre = pre.dropna().abs()
+        p50 = float(pre.dropna().median())
+        p95 = float(abs_pre.quantile(0.95))
+        clip_rate = float((abs_pre >= 0.95).mean())
+        verdict = "REVIEW" if clip_rate > 0.25 else "ok"
+        print(
+            f"{signal_id:<5}{p50:>13.3f} {p95:>11.3f} {abs_pre.max():>11.3f} "
+            f"{clip_rate:>10.1%}   {verdict}"
+        )
     print(
         "\nSaturation = share of |score| >= 0.95 among the last N scored rows; "
         f"SCALE_SATURATED when the 24-row share exceeds {SATURATION_THRESHOLD:.0%}."
@@ -194,6 +216,51 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows_out)
     print(f"Quality snapshot written: {paths.LOCAL_DIR / 'signal_quality.csv'}")
+
+
+def _pre_clip_scores(spec, series: dict, macro_config) -> pd.Series | None:
+    """Diagnostic: the level score mapping WITHOUT the +/-1 clip (v0.4c Task 8).
+
+    Mirrors the documented map_score rules on the LEVEL basis only, purely
+    for distribution review - the production engine is untouched.
+    """
+    from macro_compass.signals.engine import _basis_scale, _basis_type, _level_basis, _zscore_clip
+    from macro_compass.transforms.pipeline import apply_chain
+
+    available = [i.series_id for i in spec.inputs if i.series_id in series]
+    if not available:
+        return None
+    basis_type = _basis_type(spec)
+    scale = _basis_scale(macro_config, spec.signal_id, "level")
+    neutral = float(spec.neutral or 0.0)
+    direction = 1.0 if (spec.direction or "positive") == "positive" else -1.0
+    zsc = _zscore_clip(macro_config)
+
+    def _map(basis: pd.Series) -> pd.Series:
+        if basis_type == "rolling_percentile":
+            return 2.0 * (basis - neutral)
+        if basis_type == "robust_zscore":
+            return basis / zsc  # no clip: distribution review
+        return basis / scale
+
+    from macro_compass.signals.engine import resolve_combination
+
+    if resolve_combination(spec) == "difference":
+        # difference composites chain the RAW composite - mirror that here
+        legs = pd.concat(
+            [series[i.series_id] for i in spec.inputs], axis=1, join="inner"
+        ).dropna()
+        composite = legs.iloc[:, 0]
+        for column in legs.columns[1:]:
+            composite = composite - legs[column]
+        return _map(apply_chain(composite, [dict(step) for step in spec.transforms])) * direction
+
+    frames = []
+    for sid in available:
+        level = apply_chain(series[sid], [dict(step) for step in spec.transforms])
+        frames.append(_map(level) * direction)
+    combined = pd.concat(frames, axis=1).mean(axis=1)
+    return combined
 
 
 def _required_minimum(spec) -> int:
