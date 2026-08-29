@@ -381,9 +381,14 @@ Modified Files: 新增 src/macro_compass/market/{__init__,config,engine}.py、
 ### Economic Coverage Gate（Fundamental Core）
 
 - D2/D4（WARMUP→READY 的最后一步）：**等待用户人工导出 `wind_backfill_tsf.csv`**
-  （Total TSF Flow + Government Bond Financing Flow，≥60 个月）。导入数据链已就绪，
-  文件就绪后一次导入即转 READY；未就绪期间保持 WARMUP（真实 PBOC 增量已按月流入），
+  （Total TSF Flow + Government Bond Financing Flow，≥60 个月）。文件就绪后一次导入
+  即转 READY；未就绪期间保持 WARMUP（真实 PBOC 增量已按月流入），
   **禁止用其他来源凑数**。
+  **协调员核实（2026-08-30）**：v0.4c"导入链已就绪"仅指 PBOC 增量路由；
+  `config/wind_mapping.yaml` **尚无社融/政府债券列映射**（CN_TSF_TOTAL /
+  CN_GOV_BOND_FINANCING 在 indicators.yaml 与 data_sources.yaml 均已注册，
+  但 Wind 导出列名未映射）——文件到达后需先按用户导出列名补 wind_mapping.yaml
+  再走 import_wind.py，否则导入会因无映射被拒。
 - X2（WARMUP）：FRED DTWEXBGS **network blocker**；H.10 fallback 已实战工作，
   FRED 恢复后 update 自动补全历史 → READY。
 - X1 overlap check **BLOCKED**（同 FRED 网络）：`scripts/overlap_check.py` 已 armed，
