@@ -65,12 +65,13 @@ def build_fixture_frame(seed: int = 20260829) -> pd.DataFrame:
     return df
 
 
-def main() -> None:
-    paths.FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
+def main(output_dir: Path | None = None) -> None:
+    out_dir = Path(output_dir) if output_dir is not None else paths.FIXTURES_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
     df = build_fixture_frame()
 
-    xlsx_path = paths.FIXTURES_DIR / "wind_macro_sample.xlsx"
-    csv_path = paths.FIXTURES_DIR / "wind_macro_sample.csv"
+    xlsx_path = out_dir / "wind_macro_sample.xlsx"
+    csv_path = out_dir / "wind_macro_sample.csv"
 
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="data", index=False)

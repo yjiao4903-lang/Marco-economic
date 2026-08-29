@@ -3,8 +3,8 @@
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
 **最后人工确认基线：** 2026-08-29  
-**Current Version:** V1.3 Signal Registry + V1.5A Transform Engine（V0/V1/V1.2 已冻结）  
-**当前阶段：** V1.3 + V1.5A 已完成并通过验收，下一窗口进入 V1.5B/V1.5C（Window C，Macro Engine）。
+**Current Version:** V1.5B Signal Engine + V1.5C Macro Factor Engine（V0/V1/V1.2/V1.3/V1.5A 已冻结）  
+**当前阶段：** 系统首次输出宏观状态（Factor + Breadth + Confidence + Regime）。下一窗口进入 V1.6/V2（Window D，Market Confirmation + Structural Risk + Asset Compass）。
 
 ## 1. 已完成
 
@@ -67,6 +67,39 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
 完整清单见 `python scripts/signal_status.py` 输出与 `data/local/missing_series.csv`。
 禁止为凑齐输入擅自新增 provider——补数走 V1.2 扩展窗口或 manual fetch。
 
+### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
+- `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
+  canonical 输入序列，输出 ARCHITECTURE §8 十列契约
+  （signal_id/date/level/level_score/momentum/momentum_score/score/freshness/coverage/status）。
+  score = level_weight×level_score + momentum_weight×momentum_score（权重来自
+  signals.yaml，缺分量时按现有权重重归一，不静默补 0）。
+- 组合语义（均可解释，单一输入/single、优先级 fallback、difference 先减后变换、
+  多输入 average 逐输入过链后等权平均）：composite 必附 contribution breakdown——
+  average 为可加分数点（Σ=score），difference 为原始复合值的符号化占比（±系数/|legs|和）。
+- score 映射（basis→[-1,1]）无黑箱：rolling_percentile → 2×(basis−neutral)；
+  robust_zscore → clip(±3)/3（macro.yaml zscore_clip）；其余 basis → basis/scale
+  （scale 逐信号声明在 macro.yaml score_mapping.scales，先验手定、非数据拟合）；
+  direction: negative 信号分数取反，score>0 恒表示机制改善。
+- `src/macro_compass/macro/`（V1.5C）：factors.py 只读 Signal 输出（无 raw series 路径，
+  有源码级测试守护）——factor score = 配置权重加权（macro.yaml factor_weights，默认等权）、
+  Breadth=支持当前方向的机制数（非序列条数，breadth_min_score 门槛）、
+  Confidence=coverage/freshness/source_quality 三分量等权（来源分级读
+  data_sources.yaml 路由的 max_staleness_days + macro.yaml source_quality 分级）；
+  regime.py 仅由 growth×inflation 两轴驱动，判定顺序 NO_SIGNAL → LOW_CONFIDENCE
+  → TRANSITION → 四象限 → MIXED（breadth 不足），阈值全在 macro.yaml regime 段。
+- `scripts/macro_report.py`：人工验收主入口，一次输出 15 core signal 快照
+  （status/provenance/score/level/momentum/freshness/coverage/breakdown/missing）、
+  四 factor（score+breadth+confidence 分解+逐 signal 追溯 Factor→Signal→series→source）、
+  regime 及判定依据；写快照 CSV `data/local/signal_scores.csv`。
+  synthetic 与 real 可区分：canonical 行 source_file 命中 macro.yaml
+  synthetic_markers（wind_macro_sample）即标 SYNTHETIC，混合为 MIXED。
+- 顺手修复 Known Issue：tests/test_ingestion.py 改为生成 fixture 到 tmp_path
+  （generate_fixtures.main() 新增可选 output_dir 参数），跑 pytest 不再弄脏工作区。
+- 当前真实数据快照（2026-08-29）：growth score −0.118（G1/G3/G5，breadth 1），
+  inflation/domestic/global 无可计算信号 → REGIME: NO_SIGNAL；I1/D3 为 PARTIAL
+  但不可计算（I1 fallback 数据 36 月 < percentile 窗口 60；D3 difference 缺一条腿），
+  均显式 null score。数据为 real（OECD）+ synthetic（WIND fixture）混合状态，报告中已标注。
+
 ## 2. Canonical 最小契约
 
 ```text
@@ -84,8 +117,13 @@ source 记为 provider 大写，如 OECD / NYFED / PBC / CHINAMONEY）。
         ↓
    DuckDB（可重建缓存）+ fetch_state.json + status CSVs
         ↓
-   Transform（transforms/*，纯函数白名单）  ← V1.5A
-   Signal Registry（signals/registry.py）  ← V1.3（仅注册+校验+可用性，无打分）
+   Transform（transforms/*，纯函数白名单）  ← V1.5A frozen
+   Signal Registry（signals/registry.py）  ← V1.3 frozen
+   Signal Engine（signals/engine.py）      ← V1.5B
+        ↓  （只读 Signal 输出，禁止跳回 raw series）
+   Macro Factor Engine（macro/factors.py + regime.py）  ← V1.5C
+        ↓
+   （Asset Mapping 属 V2，未开发）
 ```
 
 ## 4. 当前 README 已定义命令
@@ -99,7 +137,8 @@ python scripts/check_quality.py
 python scripts/update_sources.py [--dry-run | --series ID | --backfill]
 python scripts/signal_status.py
 python scripts/transform_smoke.py [--signal ID | --series ID | --rows N]
-python -m pytest          # 100 passed（network 测试默认跳过）
+python scripts/macro_report.py [--today YYYY-MM-DD]   # V1.5C 宏观快照（验收主入口）
+python -m pytest          # 137 passed（network 测试默认跳过）
 python -m pytest -m network
 ```
 
@@ -119,56 +158,62 @@ python -m pytest -m network
   - `transforms/` 的 12 种白名单与纯函数契约（pipeline 的 `fill` 显式语义）
   - `signals/registry.py` 的校验规则与 READY/PARTIAL/MISSING_INPUT/DECLARED 状态语义
   - indicators.yaml 为 series 元数据唯一真源；signals.yaml 只引用 series_id
+- V1.5B/V1.5C 冻结（Window D 只扩展不重写）：
+  - `signals/engine.py` 的输出契约（ARCHITECTURE §8 十列）与 score 映射规则
+    （percentile/zscore/scale 三类规则 + direction 取反；scale 数值可调，规则本身不改）
+  - 组合语义：single / fallback（preferred→fallback 声明顺序）/ difference（先减后变换）/
+    average（逐输入过链后等权平均）及 contribution breakdown 口径
+  - `macro/factors.py` 只读 Signal 输出的硬约束与 Breadth/Confidence 语义
+    （Confidence 是数据质量描述，不是预测概率）
+  - `macro/regime.py` 判定顺序（NO_SIGNAL → LOW_CONFIDENCE → TRANSITION → 象限 → MIXED）
+  - `config/macro.yaml` schema（score_mapping/factor_weights/confidence/regime/
+    synthetic_markers 五段）；数值是先验，调整不改结构
 
 ## 6. 当前未开发
 
-- Signal 打分 / Level+Momentum 组合 / composite 聚合（V1.5B，Window C）
-- Macro Factor Engine：Growth / Inflation / Domestic Financial / Global Financial
-  聚合、Breadth、Confidence、Regime（V1.5C，Window C）
 - Market Confirmation / Structural Risk 引擎（V1.6；registry 中已占位）
 - Asset Compass / Historical Validation / Streamlit Dashboard / Cloud Mirror
 
 ## 7. 下一任务
 
-> V1.5B Signal Engine + V1.5C Macro Factor Engine（见 docs/tasks/40_V1_5B_V1_5C_MACRO_ENGINE.md）
+> V1.6 Market Confirmation + Structural Risk + V2 Asset Compass（Window D，
+> 见 docs/tasks/50_V1_6_V2_ASSET_COMPASS.md，开窗口前须补全）
 
-## 8. 窗口交接记录（2026-08-29 V1.3+V1.5A）
+## 8. 窗口交接记录（2026-08-29 V1.5B+V1.5C）
 
 ```text
 Last Test Result: PASS（python -m pytest，2026-08-29）
-Last Test Count: 100 passed, 0 failed（baseline 50 + 新增 50：transforms 33 +
-  signal registry 14 + 全局 3；另有 6 个 network 测试 opt-in 未计入）
-Last Git Tag: v0.4a-signal-foundation
+Last Test Count: 137 passed, 0 failed（原 100 + 新增 37：signal engine 19 +
+  macro factors/regime 18；另有 6 个 network 测试 opt-in 未计入）
+Last Git Tag: v0.4-macro-engine
 Known Issues: 见第 10 节
-Modified Files: 新增 config/signals.yaml、src/macro_compass/signals/、
-  src/macro_compass/transforms/、scripts/transform_smoke.py、
-  scripts/signal_status.py、tests/test_transforms.py、tests/test_signal_registry.py；
-  修改 config/indicators.yaml（迁移+补注册）、src/macro_compass/config.py（FACTORS 扩展
-  +quarterly frequency）、src/macro_compass/paths.py（SIGNALS_YAML/MISSING_SERIES_CSV）、
-  tests/test_ingestion.py（1 行断言随 level_gap→neutral_gap 迁移）、README
+Modified Files: 新增 config/macro.yaml、src/macro_compass/signals/engine.py、
+  src/macro_compass/macro/{__init__,config,factors,regime}.py、
+  scripts/macro_report.py、tests/test_signal_engine.py、tests/test_macro_factors.py；
+  修改 tests/test_ingestion.py（fixture 改生成到 tmp_path）、
+  scripts/generate_fixtures.py（main 增加可选 output_dir）、
+  src/macro_compass/paths.py（MACRO_YAML/SIGNAL_SCORES_CSV）、
+  src/macro_compass/signals/__init__.py（导出扩展）、README
 ```
 
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
 
-## 10. Known Issues（V1.3 结束时已知，不阻塞 V1.5B）
+## 10. Known Issues（V1.5B/V1.5C 结束时已知，不阻塞 Window D）
 
-- V1.3 遗留数据缺口：15 个 Core Signal 中 10 个缺全部输入、2 个缺部分输入（见第 1 节）。
-  X1/X2/X3（FRED 不可达、Chicago Fed URL 未配置）在 V1.2 已列 manual list，网络恢复后
-  `python scripts/update_sources.py` 自动补上；其余（DR007/TSF/PPI/GSCPI/房地产销售等）
-  需后续窗口扩展 provider 或走 Wind manual，V1.3 未新增任何数据源（任务禁止）。
-- indicators.yaml factor 分类现状：Core 信号输入已统一到 MASTER SPEC 四因子；
-  仅服务 Market Confirmation 的序列（CN_GOV_YIELD_10Y=rates、CN_CREDIT_SPREAD/
-  CN_AAA_CREDIT_SPREAD=credit、USD_CNY=fx）保留 legacy 标签——MASTER SPEC 未对
-  Market 层定义因子分类，V1.6 实现时再定。
-- `config.py` 的 FREQUENCIES 新增 quarterly（仅 S1/S2 的 BIS 季频序列使用）；
-  data_sources.yaml 的频率字段未放开 quarterly（这两条序列无 provider 路由）。
-- signals.yaml 中 `combination`（D1/D2/D3 的 difference 等）目前仅是声明，真实组合
-  逻辑由 V1.5B 实现；composite 的 contribution breakdown 也在 V1.5B。
-- 测试污染工作区：tests/test_ingestion.py 在测试内调用 generate_fixtures.main()，
-  每次跑 pytest 都会重写仓库内的 data/fixtures/wind_macro_sample.xlsx（内含时间戳），
-  导致 git 工作区变脏。修复方案：测试改为生成到 tmp_path（生成逻辑已可复用
-  build_fixture_frame）。V1.5B 窗口顺手修复，1 行级改动。
+- 测试污染工作区（V1.3 遗留）：**已在本窗口修复**——tests/test_ingestion.py 生成
+  fixture 到 tmp_path，pytest 不再重写 data/fixtures/；仓库 fixture 文件保持只读。
+- V1.3 遗留数据缺口不变：15 个 Core Signal 中 10 个缺全部输入、2 个缺部分输入。
+  X1/X2/X3 等 manual list 序列网络恢复后 `python scripts/update_sources.py` 自动补上；
+  其余需后续窗口扩展 provider 或走 Wind manual。禁止擅自新增 provider。
+- PARTIAL ≠ 可计算：I1（fallback CPI 数据 36 个月 < rolling_percentile 窗口 60）与
+  D3（difference 缺 CN_PRIVATE_TSF_YOY 一条腿）状态为 PARTIAL 但 score 为显式 null，
+  引擎不静默补 0。补齐输入或降低窗口（改 signals.yaml 属 frozen 变更，须走流程）后可计算。
+- macro.yaml 的 score scale 全部为手定先验（如 G1 level=3.0、G5 level=0.15），
+  未做历史拟合也禁止拟合；若某信号分数长期贴 ±1 clip 边界（如当前 G5 momentum），
+  属先验口径问题，调整须在 macro.yaml 显式改并记录。
+- 当前真实 regime 快照为 NO_SIGNAL（inflation/domestic/global 三因子无可计算信号），
+  属数据缺口而非引擎缺陷；growth 因子 score −0.118、breadth 1（仅 G1 支持）。
 - V1.2 既有 Known Issues（FRED/ChinaBond/AKShare/Chicago Fed、check_quality 混频警告、
   ChinaMoney WAF 限流）继续有效，见 git 历史中 V1.2 交接记录。

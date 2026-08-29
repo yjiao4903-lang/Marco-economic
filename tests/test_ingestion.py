@@ -20,17 +20,20 @@ from macro_compass.ingestion import (
 
 
 @pytest.fixture(scope="module")
-def fixtures() -> dict[str, Path]:
-    """Generate fixtures once per test module via the generator script."""
+def fixtures(tmp_path_factory) -> dict[str, Path]:
+    """Generate fixtures once per test module - into a temp dir, so running
+    pytest never rewrites the repository's data/fixtures/ files (which would
+    dirty the working tree with fresh timestamps)."""
     import sys as _sys
 
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     import generate_fixtures  # noqa: E402
 
-    generate_fixtures.main()
+    out_dir = tmp_path_factory.mktemp("fixtures")
+    generate_fixtures.main(output_dir=out_dir)
     return {
-        "xlsx": paths.FIXTURES_DIR / "wind_macro_sample.xlsx",
-        "csv": paths.FIXTURES_DIR / "wind_macro_sample.csv",
+        "xlsx": out_dir / "wind_macro_sample.xlsx",
+        "csv": out_dir / "wind_macro_sample.csv",
     }
 
 

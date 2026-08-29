@@ -1,0 +1,141 @@
+# V1.5B/V1.5C Macro Engine configuration.
+#
+# This file holds everything the Signal Engine (V1.5B) and Macro Factor Engine
+# (V1.5C) need beyond config/signals.yaml:
+#   - score mapping scales (basis -> score in [-1, 1])
+#   - factor aggregation weights (signal -> factor)
+#   - confidence inputs (source quality tiers, staleness default)
+#   - regime thresholds
+#   - synthetic-data markers used by the report to label provenance
+#
+# All numbers here are DECLARED PRIORS set by hand, never data-fitted and
+# never auto-searched (MASTER SPEC section 2/11; task spec 40 forbids weight
+# search). Editing this file is the only way to change them.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Score mapping (basis -> score), V1.5B.
+#
+# The mapping rule is chosen by the TYPE of the last transform step of the
+# declared chain (signals.yaml), so the mapping is fully determined by
+# existing declarations + this file:
+#
+#   rolling_percentile  basis in [0, 1], neutral anchor from signals.yaml
+#                       (0.5):  score = clip(2 * (basis - neutral), -1, 1)
+#                       A percentile IS already a bounded score, so no scale
+#                       is needed and none is applied.
+#   robust_zscore       basis clipped to [-zscore_clip, +zscore_clip] then
+#                       divided by zscore_clip:  score in [-1, 1].
+#   everything else     (neutral_gap, level, yoy, delta, ... unbounded bases):
+#                       score = clip(basis / scale, -1, 1) with the per-signal
+#                       scale declared below (level basis uses `level`,
+#                       the momentum basis - always a `delta` in the current
+#                       declarations - uses `momentum`).
+#
+# `direction: negative` signals (D1/X1/X2/X3) additionally have their score
+# multiplied by -1, so that score > 0 ALWAYS means "the mechanism is
+# improving / supportive", regardless of the raw series orientation.
+score_mapping:
+  zscore_clip: 3.0
+  scales:
+    # scale = the basis magnitude that maps to a FULL score of +/-1.
+    # Priors are round numbers set from the economic units of each basis
+    # (e.g. a CLI gap of 3 points, export growth of 15pp = full score).
+    default: {level: 2.0, momentum: 1.0}
+    G1: {level: 3.0, momentum: 1.5}     # CLI gap (index points) vs 100
+    G2: {level: 2.0, momentum: 1.0}     # PMI new-orders gap vs 50
+    G3: {level: 0.20, momentum: 0.10}   # yoy growth of IP / retail volume
+    G4: {level: 0.20, momentum: 0.10}   # property sales yoy
+    G5: {level: 0.15, momentum: 0.10}   # export yoy in percent
+    I1: {momentum: 0.30}                # level basis is a percentile (no scale)
+    I2: {momentum: 0.30}
+    I3: {momentum: 0.30}
+    D1: {momentum: 0.30}                # level = percentile of DR007-policy spread
+    D2: {level: 0.10, momentum: 0.05}   # private credit yoy
+    D3: {level: 2.0, momentum: 1.0}     # M2 yoy - private TSF yoy (pp)
+    D4: {level: 0.30, momentum: 0.15}   # gov bond financing yoy
+    X1: {momentum: 0.30}                # level = percentile of real yield
+    X2: {momentum: 0.30}
+    X3: {level: 3.0, momentum: 1.0}     # unused for level (zscore rule); momentum in z units
+
+# ---------------------------------------------------------------------------
+# Factor aggregation (V1.5C). Factor score = weighted mean of its core
+# signals' latest scores; weights below are relative (default 1.0 = equal
+# weight when a signal is absent from the map). Signals with a null score
+# (missing inputs / insufficient window) are excluded, never zero-filled.
+factor_weights:
+  growth:
+    G1: 1.0
+    G2: 1.0
+    G3: 1.0
+    G4: 1.0
+    G5: 1.0
+  inflation:
+    I1: 1.0
+    I2: 1.0
+    I3: 1.0
+  domestic_financial:
+    D1: 1.0
+    D2: 1.0
+    D3: 1.0
+    D4: 1.0
+  global_financial:
+    X1: 1.0
+    X2: 1.0
+    X3: 1.0
+
+# ---------------------------------------------------------------------------
+# Confidence (V1.5C): a DATA QUALITY description in [0, 1], NOT a forecast
+# probability. Three equally-weighted components:
+#   coverage      - share of the factor's signals that produced a score
+#   freshness     - share of contributing signals whose latest observation is
+#                   within the max_staleness_days declared for their series in
+#                   data_sources.yaml (series without a route use the default
+#                   below)
+#   source_quality- weighted mean of the contributing signals' source tiers
+confidence:
+  default_max_staleness_days: 90   # series not routed in data_sources.yaml
+  min_confidence: 0.5              # regime gate (see regime below)
+  source_quality:
+    # canonical `source` value -> tier in [0, 1]. P1 machine-readable official
+    # sources (MASTER SPEC section 9) = 1.0; Wind manual imports (P4) = 0.6;
+    # unknown sources default to default_source_quality.
+    OECD: 1.0
+    FRED: 1.0
+    NYFED: 1.0
+    CHICAGOFED: 1.0
+    CHINABOND: 1.0
+    SAFE: 1.0
+    PBC: 0.9
+    CHINAMONEY: 0.9
+    AKSHARE: 0.7
+    WIND: 0.6
+    SYNTHETIC: 0.2
+    MANUAL: 0.6
+    OTHER: 0.5
+  default_source_quality: 0.5
+
+# Regime classification (V1.5C), driven ONLY by growth x inflation.
+# Evaluation order (first match wins - documented in the report):
+#   1. NO_SIGNAL      - growth or inflation factor has no computable signals
+#   2. LOW_CONFIDENCE - both factors computable but factor confidence <
+#                       min_confidence
+#   3. TRANSITION     - at least one axis has |score| <= score_threshold
+#   4. quadrant       - both axes beyond the threshold:
+#                       G+/I+ Reflation, G+/I- Goldilocks,
+#                       G-/I+ Stagflation, G-/I- Deflationary Slowdown
+#                       ... unless the direction lacks breadth support
+#   5. MIXED          - the quadrant direction is supported by fewer than
+#                       min_breadth mechanisms on either axis
+regime:
+  score_threshold: 0.15   # |factor score| beyond this = axis is up/down
+  min_breadth: 2          # mechanisms needed to call a quadrant (vs MIXED)
+  breadth_min_score: 0.10 # |signal score| needed to count as supporting
+
+# ---------------------------------------------------------------------------
+# Provenance (report): a canonical row is SYNTHETIC when its source_file
+# contains any of these markers; otherwise it is REAL. A signal whose inputs
+# mix both is MIXED.
+synthetic_markers:
+  - wind_macro_sample
