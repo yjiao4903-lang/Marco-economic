@@ -265,6 +265,10 @@ python -m pytest -m network
 > **负责人已批准（2026-08-30）**：G3 活源切换（OECD→NBS 增速序列为 live，
 > OECD 保留历史/兜底）——授权 Window D1 作为 G0 预置任务修改 frozen signals.yaml，
 > 这是唯一被授权的 signals.yaml 变更。上述全部完成后冻结 Fundamental Core。
+>
+> **协调职责移交（2026-08-30）**：D1 交付后的验收、后续任务书起草与外部调研管理
+> 由新协调员窗口接手，工作手册见 **docs/COORDINATOR_HANDOFF.md**（含 D1 验收
+> 程序、待办队列、55 号任务书素材与红线清单）。
 
 ## 8. 窗口交接记录（2026-08-30 V1.5E / v0.4c）
 
