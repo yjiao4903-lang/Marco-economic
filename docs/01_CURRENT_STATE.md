@@ -254,13 +254,17 @@ python -m pytest -m network
 
 ## 7. 下一任务
 
-> V1.6A Market Confirmation（新窗口 Window D1，见 docs/tasks/50_V1_6A_MARKET_CONFIRMATION.md，
-> 开窗前须补全；R2 资产先验矩阵调研可并行派发，见 docs/tasks/52）
+> V1.6A Market Confirmation（新窗口 Window D1，见 docs/tasks/50_V1_6A_MARKET_CONFIRMATION.md；
+> R2 资产先验矩阵调研已完成并归档 docs/research/2026-08-30_R2_asset_prior_matrix.md）
 >
 > v0.4c 已交付（tag v0.4c-pre-market-stable，12/15 READY）。Economic Coverage Gate
-> **有条件待完成**：D2/D4 等待用户 wind_backfill_tsf.csv 导入（数据链已就绪）、
-> X2 等 FRED 网络恢复自动补全历史、X1 overlap check 已 armed 待 FRED 恢复后执行、
-> G3 活源切换待负责人批准（涉及 frozen signals.yaml）。上述完成后冻结 Fundamental Core。
+> **有条件待完成**：D2/D4 等待用户上传 wind_backfill_tsf.csv（用户已确认数据可取得，
+> 建议同时包含社融存量两列以加固 D3；数据链已就绪，导入即转 READY）、
+> X2 等 FRED 网络恢复自动补全历史、X1 overlap check 已 armed 待 FRED 恢复后执行。
+>
+> **负责人已批准（2026-08-30）**：G3 活源切换（OECD→NBS 增速序列为 live，
+> OECD 保留历史/兜底）——授权 Window D1 作为 G0 预置任务修改 frozen signals.yaml，
+> 这是唯一被授权的 signals.yaml 变更。上述全部完成后冻结 Fundamental Core。
 
 ## 8. 窗口交接记录（2026-08-30 V1.5E / v0.4c）
 
