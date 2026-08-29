@@ -166,5 +166,9 @@ Modified Files: 新增 config/signals.yaml、src/macro_compass/signals/、
   data_sources.yaml 的频率字段未放开 quarterly（这两条序列无 provider 路由）。
 - signals.yaml 中 `combination`（D1/D2/D3 的 difference 等）目前仅是声明，真实组合
   逻辑由 V1.5B 实现；composite 的 contribution breakdown 也在 V1.5B。
+- 测试污染工作区：tests/test_ingestion.py 在测试内调用 generate_fixtures.main()，
+  每次跑 pytest 都会重写仓库内的 data/fixtures/wind_macro_sample.xlsx（内含时间戳），
+  导致 git 工作区变脏。修复方案：测试改为生成到 tmp_path（生成逻辑已可复用
+  build_fixture_frame）。V1.5B 窗口顺手修复，1 行级改动。
 - V1.2 既有 Known Issues（FRED/ChinaBond/AKShare/Chicago Fed、check_quality 混频警告、
   ChinaMoney WAF 限流）继续有效，见 git 历史中 V1.2 交接记录。
