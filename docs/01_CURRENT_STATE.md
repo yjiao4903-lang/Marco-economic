@@ -392,13 +392,15 @@ python -m pytest -m network
 
 ## 7. 下一任务
 
-> **V2.5 Historical Validation（已开窗？见 60 号任务书）**：负责人明确 V2 之后立即 V2.5，
-> 不做 UI，防"看起来合理=有效"认知偏差。60 号任务书开工前须补全，须含负责人新增的
-> Information Increment / Leave-One-Mechanism-Out 要求，并纳入 V2 交付报告的三条
-> V2.5 待检验项（黄金脱钩、信用债资金面敏感、ambiguous 零权单元格）。
+> **V2.5 Historical Validation（下一窗口，60 号任务书已补全）**：负责人明确 V2 之后
+> 立即 V2.5，不做 UI，防"看起来合理=有效"认知偏差。60 号含负责人新增的 Information
+> Increment / Leave-One-Mechanism-Out 要求，并纳入 V2 交付报告的三条 V2.5 待检验项
+> （黄金实际利率脱钩、信用债资金面敏感、ambiguous 零权单元格）。V2.5 前置待办
+> （不阻塞开窗）：wind_backfill_tsf.csv 回填（D2/D4）、FRED 恢复（X2/X1 overlap）、
+> B 包调研（66 号，V2.6 前置）——均标记后补。
 >
-> **V2 交付对接**：V2 Asset Compass（v0.5）已完成（建议 tag `v0.5-asset-compass`，
-> 由协调员在验收后打标，见第 8 节）。R2 先验矩阵转写对照与两条 V2.5 待检验项声明见第 1 节 V2 小节。
+> **V2 交付对接（已完成）**：V2 Asset Compass（v0.5）已于 2026-08-30 验收 PASS，
+> tag `v0.5-asset-compass` 已打（见第 8 节 Window E）。
 >
 > **协调职责延续（2026-08-30 起）**：工作手册见 **docs/COORDINATOR_HANDOFF.md**
 > （含验收程序、待办队列、后续任务书素材与红线清单）。
@@ -429,12 +431,16 @@ Modified Files: 新增 src/macro_compass/market/{__init__,config,engine}.py、
 ```text
 Last Test Result: PASS（python -m pytest，2026-08-30）
 Last Test Count: 205 passed, 0 failed（192 基线 + 13：V2 资产层 config/引擎/隔离/转写 13）
-Last Git Tag: 建议 v0.5-asset-compass（未打标，交由协调员验收后处理）
+Last Git Tag: v0.5-asset-compass（协调员验收通过后打标，2026-08-30）
 Known Issues: 见第 10 节（V2 新增局限见下）
 Frozen 检查：V1/V1.2/V1.3/V1.5/V0.4c/V1.6A frozen components 未被重写（仅 paths.py 增 2 行常量）
 Modified Files: 新增 config/assets.yaml、src/macro_compass/assets/{__init__,config,engine}.py、
   scripts/asset_report.py、tests/test_asset_compass.py；修改 src/macro_compass/paths.py、
   docs/01_CURRENT_STATE.md、README.md
+
+协调员验收（2026-08-30）：55 号任务书 11 条 Acceptance Criteria 全部 PASS；
+6 条红线全绿（测试全过、无越权、无反向流、无 synthetic 进 production、无 silent
+fallback、Known Issues 有 blocker 分类）。tag v0.5-asset-compass 已打。
 ```
 
 ## 9. 每次窗口结束必须更新
