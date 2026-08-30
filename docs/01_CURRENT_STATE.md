@@ -3,12 +3,14 @@
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
 **最后人工确认基线：** 2026-08-30（v0.4d）  
-**Current Version:** V2.6 Structural Risk（v0.7；V0–V1.6A、V2、V2.5 全部冻结）  
+**Current Version:** V3 Local Dashboard（v1.0-local；V0–V1.6A、V2、V2.5、V2.6 全部冻结）  
 **当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
 X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
 **V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）；
-**V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频、S3 待 B 包，诊断层不进入 Asset Score）。
-Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。Dashboard（V3）尚未开发。  
+**V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频、S3 待 B 包，诊断层不进入 Asset Score）；
+**V3 Local Dashboard（Streamlit）已实现**（本地只读四面板 + 全链路可追溯下钻，
+读报告快照 CSV，不触发更新/不重算；as-of 同天对齐；synthetic 不显示为真实；无买卖/仓位字样）。
+Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。  
 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，
 且默认不进入生产计算。
 
@@ -345,6 +347,52 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
 **验收（65 号任务书 8 条 AC）**：AC1（B 包归档）＝**后补**（本窗口按指令以已实测端点落地 S1/S2，
 S3 待 B 包，见 §10）；AC2-AC8 全部 PASS（详见 §8 Window G 自查）。
 
+### V3 Local Dashboard（v1.0-local）— DONE（2026-08-30，Window H，70 号任务书）
+
+**只读 UI 交付**（V3 只做本地可视化，不新增任何计算逻辑；未重写 V1–V2.6 frozen 组件）：
+
+- **UI 技术栈**：Streamlit（`src/macro_compass/ui/app.py`），本地只读四面板：
+  ① 宏观总览（Regime + 四因子 score/breadth/confidence + 15 Core 信号表
+  status/provenance/score/level/momentum/freshness/coverage/breakdown/missing）；
+  ② 市场确认（Market Data Matrix + 六信号 1M/3M/6M/percentile + Divergence 五状态彩色）；
+  ③ 资产指引（7 资产 Score/View/1M/3M/Factor 贡献/Signal 贡献/市场确认/置信）；
+  ④ 结构风险（S1/S2/S3 状态+最新值，**明确标注"不进入资产评分"**）。
+- **全链路可追溯下钻**（MASTER SPEC §13）：Asset → Factor → Signal → Raw Series → Provider
+  通过资产面板 `selectbox` 逐级下钻到原始序列与来源，链式路径完整呈现。
+- **数据流（AC2 只读承诺）**：UI 层只 import `ui/loader.py`（纯 `pandas`/`yaml` 读，
+  不 import 任何引擎模块、无 `compute_*`、无更新触发）；所有展示值来自报告产出的 `data/local/*.csv`。
+- **producer 侧补快照（只扩展脚本输出，不动既有 4 个 CSV 形态）**：
+  - `macro_report.py` 新增写 `macro_dashboard.csv`（15 core 最新行 + 贡献分解 + 缺失输入）与
+    `macro_factors.csv`（四因子 + Regime 与判定依据 + snapshot_date）；
+  - `asset_report.py` 新增写 `asset_signal_contributions.csv`（Asset→Factor→Signal→series/source
+    全链路追溯 + snapshot_date）；
+  - `market_report.py` / `structural_report.py` 在既有快照 CSV 补 `snapshot_date` 列
+    （as-of 同天对齐可验证，不改变既有列）。
+- **as-of 对齐（AC4）**：四报告产出的 `snapshot_date` 相等即同天对齐；`ui/loader.same_day_alignment`
+  跨四面板校验（BIS 季频观测 as-of 天然滞后 2025-Q4，属如实呈现）。
+- **synthetic 隔离（AC4）**：production 默认已排除 synthetic；loader 对任何非 `real` 的
+  数据均渲染可见"◆ 非真实（synthetic 隔离，不展示为真实）"标记，绝不静默当真实；校验
+  `synthetic_rows` 在 production 快照下为空。
+- **红线（AC5）**：视图仅 顺风/逆风/中性，无 BUY/SELL/仓位/加仓/看多 等字样（`FORBIDDEN_VOCAB`
+  源扫描 + 测试锁定）；无鉴权/多用户/云功能。
+- **测试**：新增 `tests/test_ui_loader.py`（9 例，纯函数 on tmp fixtures，无网络、不污染
+  canonical）：as-of 对齐/失配与缺口、synthetic 探测、红线词扫描、Asset 全链路追溯、
+  app 源码不调用引擎/更新（AC2 源码检查）、loader 端到端与缺失快照报错。
+- **回归**：完整 pytest **244 passed / 0 failed**（v0.7 基线 235 + UI 9），`-m network` 10 deselected。
+
+**启动方式**（README 已更新）：先以**同一 `--today`** 运行四个报告生成/刷新快照，
+再 `python -m streamlit run src/macro_compass/ui/app.py`，浏览器打开 http://localhost:8501。
+
+**浏览器验收（本窗口实测，2026-08-30）**：应用无错误加载；四标签页（宏观总览/市场确认/
+资产指引/结构风险）齐全；Header「宏观资产罗盘 · 本地快照」、Regime=TRANSITION、as-of 快照日
+=2026-08-30；15 Core 信号表与红线自检脚注正常渲染。
+
+**70 号任务书 AC 自查**：AC1 四面板本地展示=**PASS**（实测加载）；AC2 只读快照不触发更新/重算
+=**PASS**（app 仅 import loader，测试锁定无引擎/更新调用）；AC3 资产下钻全链路=**PASS**
+（loader 链式追溯 + 面板 selectbox 逐级展示）；AC4 as-of 同天对齐 + synthetic 不显示为真实
+=**PASS**（same_day_alignment 校验；synthetic 可见标记）；AC5 无买卖/仓位/鉴权/云=PASS；
+AC6 完整 pytest PASS=**PASS**（244）；AC7 未重写 frozen components=**PASS**（仅扩展脚本输出）。
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -491,14 +539,27 @@ python -m pytest -m network
   - BIS 季频路由（data_sources.yaml `bis` provider + full_refresh + vintage）；
     修订行为/发布滞后为 provisional，B 包（66 号）归档后由协调员复核
 
+- V3 Local Dashboard 冻结（后续只扩展不重写）：
+  - **UI 只读约束**：`ui/app.py` 只 import `ui/loader`，不得调用任何引擎模块 /
+    `compute_*` / update 触发（源码级测试 `test_app_source_never_calls_engine_or_update` 锁定）
+  - 快照即真源：UI 展示值一律来自报告产出的 `data/local/*.csv`（macro_dashboard /
+    macro_factors / asset_signal_contributions / market / asset / structural），
+    不在 UI 层重新计算；synthetic 不显示为真实（非 real 恒有可见标记）
+  - 报告脚本输出形态为扩展点（允许追加列 / 追加快照文件），但不得删除或改动既有
+    CSV 既有列（现有 4 个快照：signal_scores / market_confirmation / asset_scores /
+    structural_risk）
+  - as-of 语义：四面板 `snapshot_date` 相等为同天对齐；观测 as-of 可滞后（BIS 季频）
+
 ## 6. 当前未开发
 
-- Streamlit Dashboard（V3）/ Cloud Mirror（V4）
+- Streamlit Dashboard（V3）— 已实现（v1.0-local）
+- Cloud Mirror（V4）
 
 ## 7. 下一任务
 
-> **V3 Local Dashboard（Streamlit）（下一窗口，70 号任务书已补全）**：V2.6 已完成并验收
-> （tag v0.7-structural-risk），按负责人路线 V2→V2.5→V2.6→**V3**→V4。
+> **V4 Cloud Mirror（下一窗口，80 号任务书）**：V3 已完成并验收（建议 tag v1.0-local），
+> 按负责人路线 V2→V2.5→V2.6→V3→**V4**。V4 才做云端同步（raw/canonical/config 同步、
+> 每台 PC 独立 DuckDB，见 02_ARCHITECTURE §14），本地保留 *.duckdb/cache/logs/.venv。
 >
 > **V2.6 后续对接（S1/S2 完成，S3 待 B 包）**：
 > - **B 包调研（66 号任务书）待归档**：BIS WS_* 修订行为/发布日历 + S3 房地产脆弱性代理池
@@ -611,6 +672,35 @@ AC4 S3 代理池）为**按负责人指令标记后补**（S1/S2 已用已实测
 如实）；红线全绿（signals.yaml 仅 structural 层 S1/S2/S3 补全、assets 零 structural 引用、
 NO_SIGNAL 显式无 synthetic、无 silent fallback）。tag v0.7-structural-risk 已打。
 
+### 窗口交接记录（2026-08-30 V3 Local Dashboard / v1.0-local，Window H）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30）
+Last Test Count: 244 passed, 0 failed（v0.7 基线 235 + UI loader 9）；-m network 10 deselected
+Last Git Tag: 建议 v1.0-local（待协调员验收后打标，下一阶段 V4 Cloud Mirror）
+Known Issues: 见第 10 节（V3 新增局限）
+Modified Files:
+  新增 src/macro_compass/ui/{__init__,loader,app}.py、tests/test_ui_loader.py；
+  修改 scripts/{macro_report,asset_report,market_report,structural_report}.py
+    （均为 producer 侧快照输出扩展，不动引擎）、src/macro_compass/paths.py
+    （+3 快照常量）、pyproject.toml（+streamlit）、docs/01_CURRENT_STATE.md、README.md
+Frozen 检查：V1–V2.6 frozen config/引擎 module 未被重写；仅扩展报告脚本输出
+  （追加快照 CSV/列）与 paths 常量。
+浏览器验收：四面板（宏观总览/市场确认/资产指引/结构风险）无错误加载，Regime=TRANSITION，
+  as-of 快照日=2026-08-30。
+```
+
+**70 号任务书 7 条 AC 自查**：AC1 四面板本地展示 PASS；AC2 只读快照不触发更新/重算 PASS
+（app 仅 import loader，测试锁定）；AC3 资产→Signal→Raw Series→Provider 全链路下钻 PASS；
+AC4 as-of 同天对齐 + synthetic 不显示为真实 PASS；AC5 无买卖/仓位/鉴权/云 PASS；
+AC6 完整 pytest PASS（244）；AC7 未重写 frozen components PASS。
+
+**协调员验收（2026-08-30）**：70 号任务书 7 条 AC 全部 PASS；红线全绿（只读快照不触发
+更新/重算、synthetic 不显示为真实、无买卖/仓位字样、无鉴权/云；报告脚本仅扩展输出未改
+契约、frozen 未重写）。协调员复验：loader 实测四面板对齐（same_day_aligned=True、
+snapshot 2026-08-30）、synthetic_leaks=[]、forbidden_word_hits=[]、资产全链路追溯正常；
+Streamlit 本地启动成功（localhost:8599）。tag v1.0-local 已打（手册 §16 既定 V3 tag）。
+
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
@@ -699,6 +789,20 @@ NO_SIGNAL 显式无 synthetic、无 silent fallback）。tag v0.7-structural-ris
   代理池组合落地后可复核。
 - **full_refresh 每次重写整条序列**：BIS bulk 文件很小（~250KB/40KB）成本可忽略；vintage
   快照持续累积（data/local/vintage/CN_*）。
+
+### V3 Local Dashboard 局限与未决项（2026-08-30，如实记录）
+
+- **UI 依赖已产出的快照 CSV**：`data/local/` 为 git-ignored 且会被 `rebuild_db`/更新清掉的
+  只是 DuckDB，快照 CSV 需在启动 dashboard 前运行四个报告脚本生成；若快照缺失/过期，
+  UI 不自动刷新（只读承诺），需手动重跑报告（README 已列命令）。
+- **Dashboard 不展示历史序列曲线**：V3 只做"最新快照 + 下钻"，不做时间序列图（资产
+  1M/3M 变化已给出）。如需因子/资产历史走势（V2.5 validation 已产 `validation_factor_panel.csv`
+  等），可后续在 UI 只读追加，本窗口未纳入。
+- **as-of 对齐依赖约定**：四脚本需用同一 `--today` 运行才满足 `same_day_alignment` 同天；
+  若分开运行，loader 会如实报告 alignment=False（不为用户静默补）。BIS 结构风险观测
+  as-of=2025-Q4 天然滞后，属如实呈现非缺陷。
+- **asset_signal_contributions 需 asset_report 新版本产出**：此前旧快照无该文件时，
+  loader 直接报缺失并提示重跑 asset_report.py（不会静默回退）。
 
 ### 其他（沿袭）
 

@@ -3,7 +3,7 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V2.6 Structural Risk（v0.7）**（V0–V1.6A、V2、V2.5 全部冻结）。
+> 当前开发阶段：**V3 Local Dashboard（v1.0-local）**（V0–V1.6A、V2、V2.5、V2.6 全部冻结）。
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
@@ -26,7 +26,11 @@
 > --series CN_DSR`），S3 Property Vulnerability 代理池待 B 包调研归档后落地（当前 NO_SIGNAL）；
 > 诊断层输出 READY/WARMUP/MISSING_INPUT，无数据或最新值超时显式 NO_SIGNAL（禁止 synthetic）；
 > **S 信号不进入 Asset Score**（源码级 + 行为级测试锁定）。
-> Regime = TRANSITION。Dashboard（V3）尚未开发。
+> Regime = TRANSITION。
+> **V3 Local Dashboard（v1.0-local）已实现**（Streamlit，本地只读）：四面板（宏观总览 /
+> 市场确认 / 资产指引 / 结构风险）+ 全链路可追溯下钻（Asset→Factor→Signal→Raw Series→
+> Provider）。UI 只读快照（读报告产出的 data/local/*.csv，不触发更新/不重算）；as-of 同天
+> 对齐（synthetic 不显示为真实）；无买卖/仓位字样；无鉴权/多用户/云功能。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
 ## 目录结构
@@ -127,6 +131,12 @@ python scripts/validation_report.py --today 2026-08-01
 python scripts/structural_report.py              # 写 data/local/structural_risk.csv
 python scripts/structural_report.py --today 2026-08-01
 python scripts/update_sources.py --series CN_CREDIT_TO_GDP_GAP --series CN_DSR  # BIS 季频入库
+
+# V3 Local Dashboard（Streamlit，本地只读四面板 + 全链路可追溯下钻）
+# 先跑四个报告（同一 --today 以保持 as-of 同天对齐），再启动：
+python scripts/macro_report.py && python scripts/market_report.py \
+  && python scripts/asset_report.py && python scripts/structural_report.py
+python -m streamlit run src/macro_compass/ui/app.py   # 打开 http://localhost:8501
 
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest

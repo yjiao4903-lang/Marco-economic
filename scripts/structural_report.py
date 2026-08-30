@@ -118,7 +118,7 @@ def main() -> None:
     )
 
     _print_readings(registry, readings, staleness, structural_config)
-    _write_snapshot(registry, readings)
+    _write_snapshot(registry, readings, today.date().isoformat())
 
     print("\nRead-only report - canonical data was not modified.")
     print(f"Structural risk snapshot written: {paths.STRUCTURAL_RISK_CSV}")
@@ -153,7 +153,7 @@ def _print_readings(registry, readings, staleness, structural_config) -> None:
         )
 
 
-def _write_snapshot(registry, readings) -> None:
+def _write_snapshot(registry, readings, snapshot_date=None) -> None:
     rows = []
     for signal_id, spec in registry.by_layer("structural").items():
         r = readings[signal_id]
@@ -166,6 +166,7 @@ def _write_snapshot(registry, readings) -> None:
                 "display_status": _display_status(r),
                 "direction_convention": r.direction,
                 "as_of": r.as_of.date().isoformat() if r.as_of is not None else "",
+                "snapshot_date": snapshot_date or "",
                 "history_start": r.history_start.date().isoformat() if r.history_start is not None else "",
                 "history_length": r.history_length,
                 "level": r.level,

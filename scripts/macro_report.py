@@ -138,8 +138,12 @@ def main() -> None:
 
     _print_signal_table(registry, computations, availability, staleness, macro_config, today)
     factors = _print_factors(registry, computations, macro_config, staleness, today)
-    _print_regime(factors, macro_config)
+    regime = _print_regime(factors, macro_config)
     _write_snapshot(registry, computations)
+    _write_dashboard_snapshots(
+        registry, computations, availability, staleness, macro_config,
+        factors, regime, today,
+    )
 
     print("\nRead-only report - canonical data was not modified.")
     print(f"Signal snapshot written: {paths.SIGNAL_SCORES_CSV}")
@@ -239,12 +243,130 @@ def _print_factors(registry, computations, macro_config, staleness, today) -> di
     return factors
 
 
-def _print_regime(factors: dict, macro_config: dict) -> None:
+def _print_regime(factors: dict, macro_config: dict):
     result = classify_regime(factors, macro_config)
     print("\n--- Regime ---")
     print(f"REGIME: {result.regime}")
     for line in result.rationale:
         print(f"  - {line}")
+    return result
+
+
+def _write_dashboard_snapshots(
+    registry, computations, availability, staleness, macro_config,
+    factors, regime, today,
+) -> None:
+    """V3: emit read-only summary snapshots (signal table + factors + regime)
+    so the dashboard never has to recompute. Existing signal_scores.csv (the
+    historical long series) is left untouched."""
+    snapshot_date = today.date().isoformat()
+    default_budget = int(
+        macro_config["confidence"].get("default_max_staleness_days", 90)
+    )
+
+    # ---- panel 1: the 15-core signal latest row + breakdown + missing ----
+    sig_rows = []
+    for signal_id, spec in registry.core.items():
+        comp = computations[signal_id]
+        latest = comp.latest()
+        missing = ", ".join(availability[signal_id].missing) or ""
+        breakdown = ""
+        unit = ""
+        if comp.contributions is not None and not comp.contributions.empty:
+            latest_c = comp.contributions.iloc[-1]
+            parts = []
+            for column in comp.contributions.columns:
+                value = latest_c[column]
+                parts.append(f"{column}: n/a" if pd.isna(value) else f"{column}: {value:+.3f}")
+            unit = (
+                "signed share of raw composite"
+                if comp.combination == "difference"
+                else "additive score points"
+            )
+            breakdown = "; ".join(parts)
+        level_score = momentum_score = score = freshness = coverage = status = None
+        data_provenance = comp.provenance
+        if latest is not None:
+            level_score = latest["level_score"]
+            momentum_score = latest["momentum_score"]
+            score = latest["score"]
+            coverage = latest["coverage"]
+            freshness = int(latest["freshness"])
+        budget = min(
+            (staleness.get(sid, default_budget) for sid in comp.input_series_ids),
+            default=default_budget,
+        )
+        status = comp.status
+        stale = "STALE" if latest is not None and freshness is not None and freshness > budget else ""
+        sig_rows.append(
+            {
+                "signal_id": signal_id,
+                "name": spec.name,
+                "factor": spec.factor or "",
+                "factor_name": {
+                    "growth": "增长",
+                    "inflation": "通胀",
+                    "domestic_financial": "国内金融",
+                    "global_financial": "全球金融",
+                }.get(spec.factor or "", spec.factor or ""),
+                "status": status,
+                "provenance": data_provenance,
+                "score": score,
+                "level_score": level_score,
+                "momentum_score": momentum_score,
+                "freshness": freshness,
+                "stale": stale,
+                "coverage": coverage,
+                "combination": comp.combination,
+                "breakdown": breakdown,
+                "breakdown_unit": unit,
+                "missing": missing,
+                "snapshot_date": snapshot_date,
+            }
+        )
+
+    # ---- panel 1: the four factors + regime ----
+    factor_rows = []
+    for factor in ("growth", "inflation", "domestic_financial", "global_financial"):
+        fr = factors[factor]
+        conf = fr.confidence
+        factor_rows.append(
+            {
+                "kind": "factor",
+                "factor": factor,
+                "factor_name": {
+                    "growth": "增长", "inflation": "通胀",
+                    "domestic_financial": "国内金融", "global_financial": "全球金融",
+                }.get(factor, factor),
+                "score": fr.score,
+                "breadth": fr.breadth,
+                "breadth_detail": ",".join(fr.breadth_detail),
+                "confidence_coverage": conf.get("coverage"),
+                "confidence_freshness": conf.get("freshness"),
+                "confidence_source_quality": conf.get("source_quality"),
+                "confidence_composite": conf.get("composite"),
+                "snapshot_date": snapshot_date,
+            }
+        )
+    factor_rows.append(
+        {
+            "kind": "regime",
+            "factor": "",
+            "factor_name": "Regime",
+            "score": None,
+            "breadth": None,
+            "breadth_detail": "\n".join(regime.rationale) if regime.rationale else "",
+            "confidence_coverage": None,
+            "confidence_freshness": None,
+            "confidence_source_quality": None,
+            "confidence_composite": regime.regime,
+            "snapshot_date": snapshot_date,
+        }
+    )
+
+    paths.LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(sig_rows).to_csv(paths.MACRO_DASHBOARD_CSV, index=False, encoding="utf-8-sig")
+    pd.DataFrame(factor_rows).to_csv(paths.MACRO_FACTORS_CSV, index=False, encoding="utf-8-sig")
 
 
 def _write_snapshot(registry, computations) -> None:

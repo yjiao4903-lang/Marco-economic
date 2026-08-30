@@ -47,6 +47,14 @@ SIGNAL_SCORES_CSV = LOCAL_DIR / "signal_scores.csv"
 MARKET_CONFIRMATION_CSV = LOCAL_DIR / "market_confirmation.csv"
 ASSET_SCORES_CSV = LOCAL_DIR / "asset_scores.csv"
 STRUCTURAL_RISK_CSV = LOCAL_DIR / "structural_risk.csv"
+
+# V3 Local Dashboard snapshot sources (producer side). The dashboard is a
+# read-only consumer of these plus the static config YAML - it never recomputes
+# or triggers an update. REGIME/market/structural observation dates may lag
+# (e.g. BIS quarterly); snapshot_date is the shared report reference day.
+MACRO_DASHBOARD_CSV = LOCAL_DIR / "macro_dashboard.csv"            # 15 core signal latest rows + breakdown + missing
+MACRO_FACTORS_CSV = LOCAL_DIR / "macro_factors.csv"               # four factors + regime rows
+ASSET_SIGNAL_CSV = LOCAL_DIR / "asset_signal_contributions.csv"   # asset -> signal -> series/provider trace
 VINTAGE_DIR = LOCAL_DIR / "vintage"
 
 LOGS_DIR = PROJECT_ROOT / "logs"

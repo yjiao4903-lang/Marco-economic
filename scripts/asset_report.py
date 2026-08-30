@@ -140,9 +140,11 @@ def main() -> None:
     _print_factor_breakdown(results)
     _print_signal_breakdown(assets_config, results)
     _write_snapshot(assets_config, results)
+    _write_signal_snapshot(assets_config, results, today)
 
     print("\nRead-only report - canonical data was not modified.")
     print(f"Asset snapshot written: {paths.ASSET_SCORES_CSV}")
+    print(f"Asset signal trace written: {paths.ASSET_SIGNAL_CSV}")
 
 
 def _print_overview(assets_config, results) -> None:
@@ -228,6 +230,36 @@ def _write_snapshot(assets_config, results) -> None:
             )
     paths.LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(paths.ASSET_SCORES_CSV, index=False, encoding="utf-8-sig")
+
+
+def _write_signal_snapshot(assets_config, results, today) -> None:
+    """V3: emit the full Asset -> Factor -> Signal -> series/source trace so
+    the dashboard can drill down without recomputing anything. Read-only."""
+    rows = []
+    for asset_id, asset_cfg in assets_config["assets"].items():
+        r = results[asset_id]
+        asof = r.asof.date().isoformat() if r.asof is not None else ""
+        if r.status != "READY":
+            continue
+        for sid in sorted(r.signal_contributions):
+            sc = r.signal_contributions[sid]
+            rows.append(
+                {
+                    "asset": asset_id,
+                    "asset_name": asset_cfg.get("name"),
+                    "signal_id": sid,
+                    "factor": sc.factor,
+                    "signal_score": sc.score,
+                    "contribution": sc.contribution,
+                    "series_source": "; ".join(
+                        f"{sid2}={src}" for sid2, src in sc.inputs.items()
+                    ),
+                    "as_of": asof,
+                    "snapshot_date": today.date().isoformat(),
+                }
+            )
+    paths.LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(paths.ASSET_SIGNAL_CSV, index=False, encoding="utf-8-sig")
 
 
 if __name__ == "__main__":

@@ -135,7 +135,7 @@ def main() -> None:
     _print_matrix(registry, sources_cfg, confirmations, staleness)
     _print_signals(registry, confirmations, market_config)
     _print_divergence(registry, confirmations, factor_results, market_config)
-    _write_snapshot(registry, confirmations)
+    _write_snapshot(registry, confirmations, today.date().isoformat())
 
     print("\nRead-only report - canonical data was not modified.")
     print(f"Market confirmation snapshot written: {paths.MARKET_CONFIRMATION_CSV}")
@@ -223,7 +223,7 @@ def _print_divergence(registry, confirmations, factor_results, market_config) ->
         )
 
 
-def _write_snapshot(registry, confirmations) -> None:
+def _write_snapshot(registry, confirmations, snapshot_date=None) -> None:
     rows = []
     for signal_id, result in confirmations.items():
         factor = registry.by_layer("market")[signal_id]
@@ -235,6 +235,7 @@ def _write_snapshot(registry, confirmations) -> None:
                 "status": result.status,
                 "direction_convention": result.direction,
                 "as_of": result.as_of.date().isoformat() if result.as_of is not None else "",
+                "snapshot_date": snapshot_date or "",
                 "history_length": result.history_length,
                 "move_1m": result.move_1m,
                 "move_3m": result.move_3m,
