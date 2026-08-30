@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from macro_compass.data_sources.akshare_source import parse_akshare_hist
+from macro_compass.data_sources.bis import parse_bis_flat_csv, period_to_quarter_end
 from macro_compass.data_sources.chicagofed import parse_nfci_csv
 from macro_compass.data_sources.chinabond import parse_yz_query
 from macro_compass.data_sources.chinamoney import parse_ccpr_json
@@ -89,6 +90,43 @@ def test_chicagofed_parse_drops_missing(fixture_file):
 
     with pytest.raises(Exception, match="no column"):
         parse_nfci_csv(text, "XYZ")
+
+
+def test_bis_quarter_period_dating():
+    assert period_to_quarter_end("2025-Q4") == date(2025, 12, 31)
+    assert period_to_quarter_end("1999-Q1") == date(1999, 3, 31)
+    assert period_to_quarter_end("garbage") is None
+    assert period_to_quarter_end("2025-M4") is None
+
+
+def test_bis_credit_gap_parse_filters_cn_type_c(fixture_file):
+    """The flat CSV header carries suffixed labels (BORROWERS_CTY:Borrowers'
+    country); the parser normalises them and keeps only the CN/private/Type-C
+    slice, dating quarters to QUARTER END."""
+    text = fixture_file("bis_credit_gap_sample.csv").read_text(encoding="utf-8")
+    dates, values = parse_bis_flat_csv(
+        text, selectors=[("TC_BORROWERS", "P"), ("CG_DTYPE", "C")]
+    )
+    # 6 CN Type-C rows (2024-Q1 .. 2025-Q2); the CN Type-A row and the US row
+    # are filtered out
+    assert dates == [date(2024, 3, 31), date(2024, 6, 30), date(2024, 9, 30),
+                     date(2024, 12, 31), date(2025, 3, 31), date(2025, 6, 30)]
+    assert values == pytest.approx([-2.5052, -3.4118, -4.1021, -4.9987, -5.2706, -5.3031])
+    assert dates == sorted(dates)
+
+
+def test_bis_dsr_parse_filters_cn_private(fixture_file):
+    text = fixture_file("bis_dsr_sample.csv").read_text(encoding="utf-8")
+    dates, values = parse_bis_flat_csv(text, selectors=[("DSR_BORROWERS", "P")])
+    assert len(dates) == 5  # CN rows only; the US row is filtered out
+    assert dates[-1] == date(2025, 3, 31)
+    assert values == pytest.approx([18.7, 18.8, 18.9, 19.0, 18.9])
+
+
+def test_bis_parse_rejects_missing_selector_column(fixture_file):
+    text = fixture_file("bis_dsr_sample.csv").read_text(encoding="utf-8")
+    with pytest.raises(Exception, match="selector column"):
+        parse_bis_flat_csv(text, selectors=[("TC_BORROWERS", "P")])
 
 
 def test_akshare_hist_parse(fixture_file):

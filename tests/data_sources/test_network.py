@@ -121,3 +121,29 @@ def test_chinabond_spread_real_fetch():
     assert (frame["series_id"] == "CN_AAA_CREDIT_SPREAD").all()
     # spread in percent: positive and below ~5 (500bp) by construction
     assert (frame["value"] > 0).all() and (frame["value"] < 5).all()
+
+
+# --- V2.6 Structural Risk: BIS quarterly long series ---------------------------
+
+
+def test_bis_real_fetch_credit_gap_and_dsr():
+    """BIS WS_CREDIT_GAP Type C (CN/P) and WS_DSR (CN/P) real fetch. The bulk
+    CSV zip endpoints were verified 2026-08-30 (HTTP 200)."""
+    _, adapter, config = _adapter_for("bis")
+    gap = adapter.fetch("CN_CREDIT_TO_GDP_GAP")
+    assert not gap.empty
+    assert (gap["series_id"] == "CN_CREDIT_TO_GDP_GAP").all()
+    assert (gap["frequency"] == "quarterly").all()
+    # verified archive anchors: 1995-Q4 start, 2025-Q4 latest = -7.6881%
+    assert gap["date"].min() == date(1995, 12, 31)
+    assert gap["date"].max() >= date(2025, 12, 31)
+    last = float(gap.loc[gap["date"].idxmax(), "value"])
+    assert last == pytest.approx(-7.6881, abs=0.01)
+
+    dsr = adapter.fetch("CN_DSR")
+    assert not dsr.empty
+    assert (dsr["series_id"] == "CN_DSR").all()
+    assert dsr["date"].min() == date(1999, 3, 31)
+    assert dsr["date"].max() >= date(2025, 12, 31)
+    last = float(dsr.loc[dsr["date"].idxmax(), "value"])
+    assert last == pytest.approx(18.8, abs=0.1)

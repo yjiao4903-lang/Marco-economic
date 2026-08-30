@@ -462,17 +462,28 @@ signals:
       - series_id: COPPER_PRICE
         role: confirmation
 
-  # --------------------------------- Structural Risk (placeholders, V1.6)
+  # --------------------------------- Structural Risk (V2.6 engine)
+  # Structural signals are medium/long-term FRAGILITY diagnostics
+  # (MASTER SPEC section 7). They NEVER enter the short-term Asset Score.
+  # They carry inputs + transform chains (level/percentile read) but, by
+  # design, NO scoring config (no direction/neutral/weights) - the V2.6
+  # structural engine computes its own diagnostic status.
   S1:
     name: Credit-to-GDP Gap
     layer: structural
     mechanism: >
       BIS-style credit gap measures credit expansion far above trend - the
       classic medium-term financial vulnerability indicator. Not part of the
-      short-term Asset Score.
+      short-term Asset Score. Input = BIS WS_CREDIT_GAP Type C (CN private
+      non-financial, percent), quarterly, bulk CSV zip (verified 2026-08-30).
     inputs:
       - series_id: CN_CREDIT_TO_GDP_GAP
         role: level
+    transforms:
+      - type: level        # the series is already the gap in percent
+    momentum_transform:
+      type: delta
+      periods: 4           # one-year change of the quarterly gap
 
   S2:
     name: Debt Service Ratio
@@ -480,14 +491,23 @@ signals:
     mechanism: >
       The share of income used to service debt; rising DSR crowds out spending
       and raises system fragility. Not part of the short-term Asset Score.
+      Input = BIS WS_DSR (CN private non-financial, percent), quarterly, bulk
+      CSV zip (verified 2026-08-30).
     inputs:
       - series_id: CN_DSR
         role: level
+    transforms:
+      - type: level        # the series is already the ratio in percent
+    momentum_transform:
+      type: delta
+      periods: 4           # one-year change of the quarterly ratio
 
   S3:
     name: Property Vulnerability
     layer: structural
     mechanism: >
       Composite of property demand exhaustion and price stagnation measuring
-      the build-up of a property-sector tail risk. Inputs and combination are
-      finalised with the V1.6 engine; declared without inputs for now.
+      the build-up of a property-sector tail risk. Not part of the short-term
+      Asset Score. The proxy-pool inputs land with B-package
+      (docs/tasks/66) - declared without inputs until then, so the layer
+      reports NO_SIGNAL (no synthetic fill, no unverified hardcoded route).

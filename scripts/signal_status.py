@@ -24,6 +24,10 @@ from macro_compass import paths  # noqa: E402
 from macro_compass.config import load_indicator_config  # noqa: E402
 from macro_compass.macro import load_macro_config  # noqa: E402
 from macro_compass.market import compute_market_metrics, load_market_config  # noqa: E402
+from macro_compass.structural import (  # noqa: E402
+    compute_structural_readings,
+    load_structural_config,
+)
 from macro_compass.signals import (  # noqa: E402
     load_core_computations,
     load_signal_registry,
@@ -44,6 +48,7 @@ def main() -> None:
     registry = load_signal_registry(paths.SIGNALS_YAML, indicators_registry=indicators)
     macro_config = load_macro_config(paths.MACRO_YAML)
     market_config = load_market_config(paths.MARKET_YAML)
+    structural_config = load_structural_config(paths.STRUCTURAL_YAML)
 
     snapshot = load_core_computations(
         registry, macro_config, allow_synthetic=args.allow_synthetic
@@ -54,8 +59,12 @@ def main() -> None:
     market_metrics = compute_market_metrics(
         registry, market_config, snapshot.series, snapshot.today
     )
+    # V2.6: structural-layer statuses come from the structural engine
+    structural_readings = compute_structural_readings(
+        registry, structural_config, snapshot.series, snapshot.today
+    )
     resolved = resolve_signal_status(
-        registry, availability, snapshot.computations, market_metrics
+        registry, availability, snapshot.computations, market_metrics, structural_readings
     )
 
     layers = (("core", "Core Fundamental"), ("market", "Market Confirmation"),

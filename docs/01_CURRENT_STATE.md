@@ -3,10 +3,11 @@
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
 **最后人工确认基线：** 2026-08-30（v0.4d）  
-**Current Version:** V2 Asset Compass（v0.5；V0–V1.6A 全部冻结）  
+**Current Version:** V2.6 Structural Risk（v0.7；V0–V1.6A、V2、V2.5 全部冻结）  
 **当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
 X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
-**V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）。
+**V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）；
+**V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频、S3 待 B 包，诊断层不进入 Asset Score）。
 Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。Dashboard（V3）尚未开发。  
 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，
 且默认不进入生产计算。
@@ -296,6 +297,54 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
   信用债资金面敏感 **INSUFFICIENT_SAMPLE**（D1 历史仅 ~19 对齐样本）。
 
 
+### V2.6 Structural Risk（v0.7）— DONE（2026-08-30，Window G，65 号任务书）
+
+**诊断层交付**（S 信号不进入 Asset Score；无数据显式 NO_SIGNAL；禁止 synthetic）：
+- **新增 BIS provider**（`data_sources/bis.py`，V1.2 增量扩展，季频为 config.py 已预留的
+  `quarterly`，data_sources registry 的 frequency Literal 本轮补齐）：
+  - S1 `CN_CREDIT_TO_GDP_GAP`：BIS `WS_CREDIT_GAP(1.0)` 中国私人非金融部门 Type C
+    （信贷/GDP 缺口=实际−HP 趋势，percent），bulk CSV zip
+    `https://data.bis.org/static/bulk/WS_CREDIT_GAP_csv_flat.zip`（实测 1995-Q4..2025-Q4，
+    最新 −7.6881%）
+  - S2 `CN_DSR`：BIS `WS_DSR(1.0)` 中国私人非金融部门偿债比率（percent），
+    `https://data.bis.org/static/bulk/WS_DSR_csv_flat.zip`（实测 1999-Q1..2025-Q4，最新 18.8%）
+  - 解析器处理 BIS 带后缀维度标签的表头（`BORROWERS_CTY:Borrowers' country`→截断归一）、
+    `YYYY-Qn`→季末日期；按国家/部门/类型筛选行；flat CSV 一行一条观测
+  - update_policy=`full_refresh` + vintage 快照（GSCPI 先例：gap 的 HP 趋势每季重估，
+    全历史可能修订）——**provisional**，待 B 包（66 号任务书）确认修订行为后由协调员复核
+  - max_staleness_days=260 / expected_release_lag=240d 反映实测发布滞后（2026-08-30 实测
+    最新仍为 2025-Q4，约滞后 8 个月）
+- **signals.yaml S1/S2/S3 占位补全**（structural 层不含打分配置）：S1/S2 声明 inputs
+  （CN_CREDIT_TO_GDP_GAP / CN_DSR）+ transforms `level` + momentum `delta(4)`；S3 保持无输入
+  （机制注明待 B 包代理池）
+- **`config/structural.yaml`（新）**：逐信号 direction 约定（rising=更脆弱）、percentile
+  window（40 季≈10 年）、trend（4 季）、诊断阈值（S1 用 level：elevated=10% BIS red-zone 先验 /
+  above_trend=0；S2 用 percentile：elevated 0.80 / moderate 0.50）——全部声明先验，非拟合
+- **`src/macro_compass/structural/`（新包，纯函数）**：`config.py`（加载校验）、`engine.py`
+  （`compute_structural_readings` 复用 V1.5A 白名单 level/delta/rolling_percentile，无新增变换）。
+  输出契约：signal_id / series_id / status（V1.5D：READY/WARMUP/MISSING_INPUT）/ as_of /
+  history / level / percentile / trend / stale / diagnostic / message / provenance / source。
+  无数据或最新季频值超过 staleness 预算 → 报告层显式 `NO_SIGNAL`（引擎保留 V1.5D 状态 + stale
+  标记，报告映射不复制逻辑）
+- **`scripts/structural_report.py`**：S1/S2/S3 状态 + 最新值 + 诊断读 + 隔离声明；
+  写 `data/local/structural_risk.csv`；与 macro/market/asset 报告同 as-of 对齐
+- **接线**：`resolve_signal_status` 增加 structural 分支（同 market 先例，向后兼容）；
+  `signal_status.py` 的 Structural Risk 段改由结构引擎解析（S1/S2 READY / S3 MISSING_INPUT）
+- **macro.yaml** 增 `BIS: 1.0` 来源评级（P1 官方机器可读）
+- **当前真实快照（2026-08-30，真实 BIS 数据）**：
+  - S1 Credit-to-GDP Gap：**READY**，level −7.688%，40 季分位 0.275，4 季变化 −0.11pp，
+    诊断 **BELOW_TREND**（缺口低于 HP 趋势）
+  - S2 Debt Service Ratio：**READY**，level 18.8%，40 季分位 **0.950**（历史高位），
+    4 季变化 +0.30pp，诊断 **ELEVATED**（偿债比率处于自身历史高位）
+  - S3 Property Vulnerability：**NO_SIGNAL**（代理池待 B 包调研归档后落地）
+- **隔离证明**（同 V1.6A/V2 范式）：`test_asset_layer_never_imports_structural`（源码级：
+  assets 包无任何 structural 引用）+ `test_asset_score_identical_with_structural_present`
+  （行为级：资产层只吃四因子输出，无 S 信号路径）+ `test_structural_signals_not_in_core_engine`
+  （V1.5B core 引擎不计算 S 信号）+ grep 全仓确认 macro/assets 无 S 信号引用
+
+**验收（65 号任务书 8 条 AC）**：AC1（B 包归档）＝**后补**（本窗口按指令以已实测端点落地 S1/S2，
+S3 待 B 包，见 §10）；AC2-AC8 全部 PASS（详见 §8 Window G 自查）。
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -375,7 +424,9 @@ python scripts/transform_smoke.py [--signal ID | --series ID | --rows N]
 python scripts/macro_report.py [--today YYYY-MM-DD]   # V1.5C 宏观快照（验收主入口）
 python scripts/signal_quality.py                      # V1.5D 信号质量诊断（saturation/warmup）
 python scripts/market_report.py [--today YYYY-MM-DD]  # V1.6A 市场确认层快照（Matrix+divergence）
-python -m pytest          # 192 passed（network 测试默认跳过，-m network opt-in）
+python scripts/structural_report.py [--today YYYY-MM-DD]  # V2.6 Structural Risk 诊断快照
+python scripts/update_sources.py --series CN_CREDIT_TO_GDP_GAP --series CN_DSR  # BIS 季频入库
+python -m pytest          # 235 passed（network 测试默认跳过，-m network opt-in）
 python -m pytest -m network
 ```
 
@@ -428,24 +479,38 @@ python -m pytest -m network
   - 资产层单向隔离：只读 macro/market 输出，无任何 Asset→Factor/Market 反向流；
     不 import market 包；不改 freeze 的 V1–V1.6A
 
+- V2.6 Structural Risk 冻结（后续只扩展不重写）：
+  - S 信号**不进入 Asset Score**（MASTER SPEC §7；assets 包不得 import structural，
+    源码级 + 行为级测试锁定）
+  - `config/structural.yaml` schema（signals 段 direction/percentile_window/trend_quarters/
+    thresholds，placeholder 标记；S3 方向为 provisional，B 包可复核）
+  - `structural/engine.py` 的读取口径：V1.5D 状态（READY/WARMUP/MISSING_INPUT）+ stale 标记；
+    无数据/最新季频值超预算 → 报告层显式 `NO_SIGNAL`，**禁止 silent fallback / synthetic**
+  - `signals.yaml` S1/S2 的输入绑定与变换链（level + delta(4)）与 S3 无输入占位
+    （structural 层不含打分配置）；S3 代理池组合待 B 包落地后方可填
+  - BIS 季频路由（data_sources.yaml `bis` provider + full_refresh + vintage）；
+    修订行为/发布滞后为 provisional，B 包（66 号）归档后由协调员复核
+
 ## 6. 当前未开发
 
-- Structural Risk 引擎（V2.6；registry 中已占位）
 - Streamlit Dashboard（V3）/ Cloud Mirror（V4）
 
 ## 7. 下一任务
 
-> **V2.6 Structural Risk（下一窗口，65 号任务书 + 66 号数据调研已就绪）**：V2.5 已完成，
-> 按负责人路线 V2→V2.5→**V2.6 Structural Risk**→V3。B 包调研档案已归档
-> `docs/research/2026-08-30_data_layer_round2_validation.md` / 66 号任务书。
+> **V3 Local Dashboard（Streamlit）（下一窗口，70 号任务书已补全）**：V2.6 已完成并验收
+> （tag v0.7-structural-risk），按负责人路线 V2→V2.5→V2.6→**V3**→V4。
 >
-> **V2.5 前置回填待办（登入 backfill gaps，不阻塞 V2.6，但决定 V2.5 再验证质量）**：
+> **V2.6 后续对接（S1/S2 完成，S3 待 B 包）**：
+> - **B 包调研（66 号任务书）待归档**：BIS WS_* 修订行为/发布日历 + S3 房地产脆弱性代理池
+>   可获取性（价格/景气/资金/杠杆四类端点、历史深度、更新行为）。归档并经协调员抽验后，
+>   才能落地 S3 输入路由（含 Wind manual 项）并复核 S1/S2 的 update_policy / max_staleness。
+> - 本窗口 S1/S2 的 `full_refresh`、max_staleness=260、release_lag=240 均为 **provisional**，
+>   待 B 包确认。
+>
+> **V2.5 前置回填待办（登入 backfill gaps，不阻塞后续版本，但决定 V2.5 再验证质量）**：
 > wind_backfill_tsf.csv（D2/D4）、PMI 新订单/购进价格、核心 CPI、房地产历史、政策利率历史、
 > USD_BROAD、real 黄金现货 + 2022 前 10Y 实际利率（供 GOLD 脱钩检验）——均走既有
 > Wind manual import 链，无新爬虫。
->
-> **V2.5 交付对接（已完成 · 本窗口）**：60 号任务书 10 条 Acceptance Criteria 见 §8
-> Window F 自查与结论。
 >
 > **协调职责延续（2026-08-30 起）**：工作手册见 **docs/COORDINATOR_HANDOFF.md**
 > （含验收程序、待办队列、后续任务书素材与红线清单）。
@@ -505,6 +570,46 @@ Modified Files: 新增 src/macro_compass/validation/{__init__,coverage,history,m
 协调员验收（2026-08-30）：60 号任务书 10 条 Acceptance Criteria 全部 PASS；
 红线全绿（含"结论诚实"——样本不足明确标注，与负责人方案 §31 一致）。tag v0.6-validation 已打。
 ```
+
+### 窗口交接记录（2026-08-30 V2.6 Structural Risk / v0.7，Window G）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30）
+Last Test Count: 235 passed, 0 failed（216 基线 + 19：BIS 解析器 4 + structural 引擎/声明/
+  状态/隔离 15）；-m network 新增 BIS 真实端点测试 1 passed（其余 9 个为既有环境 blocker/
+  opt-in 行为）
+Last Git Tag: v0.6-validation（本窗口建议 tag v0.7-structural-risk，待协调员验收后打标）
+Known Issues: 见第 10 节（V2.6 新增局限：B 包待归档、full_refresh/staleness provisional、
+  S3 NO_SIGNAL、发布滞后 8 个月）
+Frozen 检查：V1/V1.2/V1.3/V1.5/V0.4c/V1.6A/V2 frozen components 未被重写
+  （扩展点：data_sources registry frequency Literal 增 quarterly（V1.2 增量扩展，任务书预期）；
+  resolve_signal_status 增 structural 分支（同 market 先例，向后兼容）；paths 增常量；
+  macro.yaml 增 BIS:1.0 评级；signals.yaml S1/S2/S3 占位补全（V2.6 任务书授权，structural 层
+  不含打分配置）。未改任何引擎核心逻辑）
+Modified Files: 新增 src/macro_compass/data_sources/bis.py、structural/{__init__,config,engine}.py、
+  config/structural.yaml、scripts/structural_report.py、tests/test_structural.py、
+  tests/fixtures/data_sources/bis_{credit_gap_sample,dsr_sample}.csv；修改
+  config/data_sources.yaml（bis provider + S1/S2 路由）、config/signals.yaml（S1/S2/S3 声明）、
+  config/macro.yaml（BIS 评级）、data_sources/registry.py（quarterly）、signals/status.py
+  （structural 分支）、scripts/signal_status.py（接线）、paths.py（常量）、
+  tests/data_sources/{test_parsers,test_network}.py、docs/01_CURRENT_STATE.md、README.md
+```
+
+**65 号任务书 8 条 AC 自查**：
+1. B 包调研归档+抽验 → **后补**（66 号任务书未归档；本窗口按负责人指令以已实测端点落地 S1/S2）
+2. S1/S2 走 BIS 真实数据 + V1.2 契约 + 无数据 NO_SIGNAL 无 synthetic → **PASS**（真实入库 +
+   路由 primary=bis / quarterly / full_refresh；S3 无数据 NO_SIGNAL 实测）
+3. 新增变换（若有）先扩展白名单 → **PASS（无新增变换**，全复用 level/delta/rolling_percentile）
+4. S3 代理组合落地并注明口径 → **后补**（待 B 包；S3 保持无输入 → NO_SIGNAL，机制注明）
+5. Structural 引擎输出诊断状态、不进入 Asset Score（测试证明无数据流）→ **PASS**
+6. 报告入口 structural_report.py 输出 S1/S2/S3 状态与最新值 → **PASS**（真实快照见 §1）
+7. 完整 pytest PASS + 网络测试 opt-in → **PASS**（235 passed / 0 failed；BIS network 单独 PASS）
+8. V1–V2.5 frozen components 未被重写 → **PASS**（仅增量扩展，见 Frozen 检查）
+
+**协调员验收（2026-08-30）**：65 号任务书 8 条 AC——6 条 PASS + 2 条（AC1 B 包归档、
+AC4 S3 代理池）为**按负责人指令标记后补**（S1/S2 已用已实测 BIS 端点落地，S3 NO_SIGNAL
+如实）；红线全绿（signals.yaml 仅 structural 层 S1/S2/S3 补全、assets 零 structural 引用、
+NO_SIGNAL 显式无 synthetic、无 silent fallback）。tag v0.7-structural-risk 已打。
 
 ## 9. 每次窗口结束必须更新
 
@@ -577,6 +682,23 @@ Modified Files: 新增 src/macro_compass/validation/{__init__,coverage,history,m
   （刚接入）、D2/D4（样本不足）已排除出候选，勿过度解读为"有效"。
 - **结论边界**：本窗口的"（暂时）不能验证"是数据覆盖问题的如实结果，不是模型能力的否定；
   也不代表 60 样本线是统计保证，all 结论均为工程/探索级判断而非统计显著性。
+
+### V2.6 Structural Risk 局限与未决项（2026-08-30，如实记录）
+
+- **B 包调研（66 号任务书）未归档**：S3 房地产脆弱性代理池（价格/景气/资金/杠杆四类端点、
+  历史深度、更新行为）待外部调研归档并经协调员抽验后才能落地输入路由（可含 Wind manual 项）。
+  本窗口 **S3 保持 NO_SIGNAL**，未硬编码未验证路由（AC1/AC4 后补）。
+- **S1/S2 更新行为为 provisional**：`full_refresh`（credit gap 的 HP 趋势每季重估→全历史可修订，
+  GSCPI 先例）、max_staleness=260 / release_lag=240d（2026-08-30 实测 BIS 最新仍为 2025-Q4，
+  约滞后 8 个月）——待 B 包确认 BIS 修订行为/发布日历后由协调员复核。
+- **BIS 发布滞后 ~2 季**：当前 latest=2025-Q4，freshness 242d（在预算 260d 内），属 BIS 正常
+  发布节奏；解读时注意 S 信号是"滞后确认"的中长期脆弱性指标，非高频触发信号。
+- **S 信号无目标/阈值校准**：S1 elevated=10%（BIS red-zone 先验）、S2 percentile 阈值均为声明
+  先验，未经历史检验（与 Divergence 阈值同类，V2.5 之前不改）。
+- **S3 方向 provisional**：structural.yaml 中 S3 `direction: negative` 为占位声明先验，B 包
+  代理池组合落地后可复核。
+- **full_refresh 每次重写整条序列**：BIS bulk 文件很小（~250KB/40KB）成本可忽略；vintage
+  快照持续累积（data/local/vintage/CN_*）。
 
 ### 其他（沿袭）
 

@@ -34,6 +34,7 @@ SIGNALS_YAML = CONFIG_DIR / "signals.yaml"
 MACRO_YAML = CONFIG_DIR / "macro.yaml"
 MARKET_YAML = CONFIG_DIR / "market.yaml"
 ASSETS_YAML = CONFIG_DIR / "assets.yaml"
+STRUCTURAL_YAML = CONFIG_DIR / "structural.yaml"
 
 # V1.2 multi-source acquisition state and status outputs. All operational
 # state lives under data/local/ (git-ignored, safe to delete - it is rebuilt
@@ -45,6 +46,7 @@ MISSING_SERIES_CSV = LOCAL_DIR / "missing_series.csv"
 SIGNAL_SCORES_CSV = LOCAL_DIR / "signal_scores.csv"
 MARKET_CONFIRMATION_CSV = LOCAL_DIR / "market_confirmation.csv"
 ASSET_SCORES_CSV = LOCAL_DIR / "asset_scores.csv"
+STRUCTURAL_RISK_CSV = LOCAL_DIR / "structural_risk.csv"
 VINTAGE_DIR = LOCAL_DIR / "vintage"
 
 LOGS_DIR = PROJECT_ROOT / "logs"

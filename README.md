@@ -3,7 +3,7 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V2.5 Historical Validation（v0.6）**（V0–V1.6A、v0.4d、V2 全部冻结）。
+> 当前开发阶段：**V2.6 Structural Risk（v0.7）**（V0–V1.6A、V2、V2.5 全部冻结）。
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
@@ -20,6 +20,12 @@
 > 黄金实际利率脱钩 DATA_BLOCKED（无真实 2022 前历史）、信用债资金面敏感 INSUFFICIENT_SAMPLE；
 > LOMO 早见 growth:G3 为低增量候选（仅建议，未降级）。回填清单见
 > `python scripts/validation_report.py` 输出 / `data/local/validation_backfill_gaps.csv`。
+> **V2.6 Structural Risk（v0.7）已实现**（`python scripts/structural_report.py`）：
+> S1 Credit-to-GDP Gap / S2 Debt Service Ratio 走 BIS 真实季频数据（WS_CREDIT_GAP Type C /
+> WS_DSR，bulk CSV zip，`python scripts/update_sources.py --series CN_CREDIT_TO_GDP_GAP
+> --series CN_DSR`），S3 Property Vulnerability 代理池待 B 包调研归档后落地（当前 NO_SIGNAL）；
+> 诊断层输出 READY/WARMUP/MISSING_INPUT，无数据或最新值超时显式 NO_SIGNAL（禁止 synthetic）；
+> **S 信号不进入 Asset Score**（源码级 + 行为级测试锁定）。
 > Regime = TRANSITION。Dashboard（V3）尚未开发。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
@@ -116,6 +122,11 @@ python scripts/asset_report.py --today 2026-08-01
 # V2.5 Historical Validation：Coverage Matrix + 五方法 + LOMO + 两条 regime 检验
 python scripts/validation_report.py              # 写 data/local/validation_*.csv
 python scripts/validation_report.py --today 2026-08-01
+
+# V2.6 Structural Risk 快照：S1/S2/S3 诊断状态 + 最新值 + NO_SIGNAL 语义
+python scripts/structural_report.py              # 写 data/local/structural_risk.csv
+python scripts/structural_report.py --today 2026-08-01
+python scripts/update_sources.py --series CN_CREDIT_TO_GDP_GAP --series CN_DSR  # BIS 季频入库
 
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest

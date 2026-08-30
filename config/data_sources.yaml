@@ -90,6 +90,14 @@ providers:
     module: eastmoney
     adapter_class: EastmoneyAdapter
     timeout_seconds: 45
+  bis:
+    # V2.6 Structural Risk: BIS quarterly long series (bulk CSV zip, keyless).
+    # Verified 2026-08-30 (HTTP 200): WS_CREDIT_GAP / WS_DSR both carry China
+    # private non-financial sector history. The flat CSV is small (~250KB /
+    # ~40KB) so the adapter always returns the full series.
+    module: bis
+    adapter_class: BisAdapter
+    timeout_seconds: 90
 
 series:
   # --- OECD (V1.2A Batch A chain: CLI / CPI / production / retail / exports)
@@ -577,3 +585,43 @@ series:
     manual_instructions: >
       Export 中债AAA中短期票据3Y and 国债3Y yields from Wind to data/inbox/wind/
       and run python scripts/import_wind.py <file>
+
+  # --- V2.6 Structural Risk (BIS quarterly long series) --------------------
+  # Both series live in the SAME bulk zip file (full history each fetch).
+  # update_policy=full_refresh + vintage snapshots: the credit gap's HP trend
+  # is re-estimated each quarter so the WHOLE gap history can be revised
+  # (GSCPI precedent). PROVISIONAL pending B-package (docs/tasks/66) revision
+  # confirmation - coordinator adjusts update_policy if B-package disagrees.
+  # max_staleness_days reflects the observed BIS publication lag (verified
+  # 2026-08-30: latest published = 2025-Q4, ~8 months after quarter end).
+  CN_CREDIT_TO_GDP_GAP:
+    primary: bis
+    provider_code: "CREDIT_GAP_C"
+    frequency: quarterly
+    category: macro
+    max_staleness_days: 260
+    update_policy:
+      mode: full_refresh
+    freshness:
+      expected_release_lag_days: 240
+    original_source: >
+      BIS WS_CREDIT_GAP(1.0), China private non-financial sector, data type C
+      = credit-to-GDP gap (actual - HP trend), percent of GDP. Bulk CSV zip
+      endpoint verified 2026-08-30 (1995-Q4 .. 2025-Q4, latest -7.6881%).
+      S1 of the Structural Risk layer; never enters the short-term Asset Score.
+
+  CN_DSR:
+    primary: bis
+    provider_code: "DSR_P"
+    frequency: quarterly
+    category: macro
+    max_staleness_days: 260
+    update_policy:
+      mode: full_refresh
+    freshness:
+      expected_release_lag_days: 240
+    original_source: >
+      BIS WS_DSR(1.0), China private non-financial sector debt service ratio
+      (percent). Bulk CSV zip endpoint verified 2026-08-30
+      (1999-Q1 .. 2025-Q4, latest 18.8%). S2 of the Structural Risk layer;
+      never enters the short-term Asset Score.

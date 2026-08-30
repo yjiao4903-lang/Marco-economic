@@ -1,0 +1,56 @@
+# V2.6 Structural Risk layer configuration.
+#
+# The Structural Risk signals (S1-S3) are medium/long-term FRAGILITY
+# diagnostics (MASTER SPEC section 7) that NEVER enter the short-term Asset
+# Score (ARCHITECTURE; locked by the asset-layer isolation tests). All values
+# in this file are DECLARED PRIORS - economic anchors set by hand, never
+# fitted to data, never searched.
+#
+# Semantics (per signal):
+#   direction           "rising series" convention mirroring market.yaml:
+#                       `negative` = a RISING raw value is MORE fragile /
+#                       deteriorating. S1 = rising credit-to-GDP gap,
+#                       S2 = rising debt service ratio.
+#   percentile_window   rolling window in OBSERVATIONS (= quarters, the
+#                       series are quarterly) used for historical positioning.
+#   trend_quarters      delta horizon (quarters) for the trend read.
+#   thresholds          declared anchors for the diagnostic label:
+#                       - S1 uses level thresholds on the gap (percent):
+#                         `elevated` is the BIS 'red zone' prior (credit gap
+#                         > 10pp, Borio-Drehmann-Tsatsaronis 2010), and
+#                         `above_trend` = gap > 0 means credit is above its
+#                         HP trend (fragility building).
+#                       - S2 uses percentile thresholds of the DSR's own
+#                         history (percentile_window).
+#
+# S3 (Property Vulnerability) has NO inputs until the B-package research
+# (docs/tasks/66) is archived and the proxy pool is verified - it reports
+# NO_SIGNAL rather than a synthetic or unverified reading.
+
+version: 1
+
+signals:
+  S1:
+    direction: negative           # rising gap = more fragile
+    percentile_window: 40         # ~10y of quarterly observations
+    trend_quarters: 4             # one-year change
+    thresholds:
+      elevated: 10.0              # BIS 'red zone' prior (percent)
+      above_trend: 0.0            # gap > 0 = credit above its HP trend
+
+  S2:
+    direction: negative           # rising DSR = more fragile
+    percentile_window: 40
+    trend_quarters: 4
+    thresholds:
+      elevated_percentile: 0.80   # own-history percentile of elevated DSR
+      moderate_percentile: 0.50
+
+  S3:
+    # proxy-pool inputs land with B-package (docs/tasks/66); none declared yet
+    placeholder: true
+    note: 代理池待 B 包调研归档后落地
+    # direction is a provisional declared prior (rising composite = more
+    # fragile) kept so the config schema stays strict (no implicit
+    # assumptions); the B-package proxy combination may revisit it.
+    direction: negative

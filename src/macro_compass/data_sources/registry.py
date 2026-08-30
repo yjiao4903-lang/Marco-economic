@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from macro_compass.config import ConfigError
 from macro_compass.data_sources.base import DataSourceAdapter
 
-FREQUENCIES = ("monthly", "weekly", "daily")
+FREQUENCIES = ("monthly", "weekly", "daily", "quarterly")
 CATEGORIES = ("macro", "market")
 
 
@@ -77,7 +77,7 @@ class SeriesSource(BaseModel):
     fallback: Optional[str] = None
     provider_code: str = ""
     fallback_code: str = ""
-    frequency: Literal["monthly", "weekly", "daily"]
+    frequency: Literal["monthly", "weekly", "daily", "quarterly"]
     category: Literal["macro", "market"]
     max_staleness_days: int = Field(default=60, ge=1)
     original_source: str = ""

@@ -33,14 +33,16 @@ def resolve_signal_status(
     availability: Mapping[str, SignalAvailability],
     computations: Mapping[str, SignalComputation],
     market_computations: Optional[Mapping] = None,
+    structural_computations: Optional[Mapping] = None,
 ) -> dict[str, str]:
     """One resolved status per signal, consistent across all report entry points.
 
     Core signals take the engine's computed status (which already encodes
     WARMUP); market signals take the V1.6A market engine's status when the
-    caller supplies it (READY / WARMUP / MISSING_INPUT), structural
-    placeholders keep the registry's DECLARED / MISSING_INPUT semantics
-    (their engine is V2.6).
+    caller supplies it (READY / WARMUP / MISSING_INPUT); structural signals
+    take the V2.6 structural engine's status when supplied (same semantics).
+    Signals without an engine result keep the registry's placeholder semantics
+    (DECLARED / MISSING_INPUT).
     """
     resolved: dict[str, str] = {}
     for signal_id, spec in registry.signals.items():
@@ -51,6 +53,12 @@ def resolve_signal_status(
             )
         elif spec.layer == "market" and market_computations and signal_id in market_computations:
             resolved[signal_id] = market_computations[signal_id].status
+        elif (
+            spec.layer == "structural"
+            and structural_computations
+            and signal_id in structural_computations
+        ):
+            resolved[signal_id] = structural_computations[signal_id].status
         else:
             resolved[signal_id] = availability[signal_id].status
     return resolved

@@ -125,6 +125,7 @@ confidence:
     CHICAGOFED: 1.0
     CHINABOND: 1.0
     SAFE: 1.0
+    BIS: 1.0          # V2.6: official machine-readable quarterly long series
     PBC: 0.9
     CHINAMONEY: 0.9
     AKSHARE: 0.7
