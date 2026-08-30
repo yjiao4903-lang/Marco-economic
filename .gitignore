@@ -6,8 +6,9 @@ __pycache__/
 *.duckdb.wal
 data/local/
 data/inbox/
-data/raw/
-data/canonical/
+# V4 Cloud Mirror: config/, data/raw/ and data/canonical/ ARE synced to the
+# remote (remove machine-local artifacts from here only - never unignore
+# *.duckdb, data/local/, logs/ or .venv/).
 logs/
 .streamlit/
 *.egg-info/

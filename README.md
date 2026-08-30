@@ -3,7 +3,7 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V3 Local Dashboard（v1.0-local）**（V0–V1.6A、V2、V2.5、V2.6 全部冻结）。
+> 当前开发阶段：**V4 Cloud Mirror（v0.8，待验收）**（V0–V3 全部冻结）。
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
@@ -31,6 +31,11 @@
 > 市场确认 / 资产指引 / 结构风险）+ 全链路可追溯下钻（Asset→Factor→Signal→Raw Series→
 > Provider）。UI 只读快照（读报告产出的 data/local/*.csv，不触发更新/不重算）；as-of 同天
 > 对齐（synthetic 不显示为真实）；无买卖/仓位字样；无鉴权/多用户/云功能。
+> **V4 Cloud Mirror（v0.8）已实现**（Git 私有仓库后端：`python scripts/cloud_sync.py`）：
+> 同步 `config/` + `data/raw/` + `data/canonical/` 到私有远程，多 PC 共享一份真源；本地
+> 保留 `*.duckdb` / `data/local/` / `logs/` / `.venv/`；每台 PC 拉取后用 `rebuild_db.py`
+> 完全重建本地 DuckDB；raw 追加式不同文件合并零冲突、canonical 并发改写显式 CONFLICT、
+> 失败显式状态、无凭证上传、无 silent fallback。真实远程 URL 由用户配置后执行。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
 ## 目录结构
@@ -141,7 +146,39 @@ python -m streamlit run src/macro_compass/ui/app.py   # 打开 http://localhost:
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest
 python -m pytest -m network
+
+# V4 Cloud Mirror：把 config/ + data/raw/ + data/canonical/ 同步到 Git 私有远程
+# （*.duckdb / data/local/ / logs/ / .venv/ 永不上传；失败显式状态，无 silent fallback）
+python scripts/cloud_sync.py --dry-run   # 只打印待同步清单，不写/不传
+python scripts/cloud_sync.py             # 推送：verify -> add -> commit -> pull(merge) -> push
+python scripts/cloud_sync.py --pull      # 多 PC 拉取最新 config/raw/canonical
+git remote add origin <your-private-repo-url>   # 首次配置真实远程（用户自行执行）
 ```
+
+## 多 PC 同步 / 重建流程（V4 Cloud Mirror）
+
+后端选择（2026-08-30 与负责人确认）：**Git 私有仓库**。真实远程 URL 由用户配置，未预设实现。
+
+```text
+PC-A（数据机）
+  更新/导入后 → python scripts/cloud_sync.py --dry-run   # 校验清单（12 项：config/raw/canonical）
+             → python scripts/cloud_sync.py               # 提交并推送 config/raw/canonical
+PC-B（新机器）
+  git clone <your-private-repo-url>  ← 拉到 config/raw/canonical
+  python scripts/rebuild_db.py        ← 从 canonical 完全重建本地 DuckDB（每 PC 独立）
+  （后续更新） python scripts/cloud_sync.py --pull && python scripts/rebuild_db.py
+```
+
+同步合并语义（与数据层一致）：
+
+- `data/raw/wind/` 为**追加式**：时间戳命名的原件从不覆盖；不同 PC 新增不同文件 → Git
+  树合并零冲突，另一端 pull 后全部在列（不丢不覆盖）。
+- `data/canonical/` 承载合并后的真源；两台 PC 并发改写同一 parquet → Git 二进制冲突
+  → `cloud_sync` **显式 CONFLICT**（不静默覆盖），需人工解决后重跑。
+- vintage 快照（GSCPI/BIS 等可修订序列）在 `data/local/vintage/`，属每 PC 本地，不上传，
+  由 canonical 重建。
+- 任何 git 失败（无 git / identity 缺失 / push 被拒 / 网络）→ 显式失败状态 + 非零退出码，
+  无 silent fallback；凭证类/本地缓存类文件在清单校验阶段即被拒绝（双保险于 .gitignore）。
 
 ## 数据契约（canonical long format）
 

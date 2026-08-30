@@ -3,13 +3,17 @@
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
 **最后人工确认基线：** 2026-08-30（v0.4d）  
-**Current Version:** V3 Local Dashboard（v1.0-local；V0–V1.6A、V2、V2.5、V2.6 全部冻结）  
+**Current Version:** V4 Cloud Mirror（v0.8，待验收；V0–V3 全部冻结）  
 **当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
 X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
 **V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）；
 **V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频、S3 待 B 包，诊断层不进入 Asset Score）；
 **V3 Local Dashboard（Streamlit）已实现**（本地只读四面板 + 全链路可追溯下钻，
 读报告快照 CSV，不触发更新/不重算；as-of 同天对齐；synthetic 不显示为真实；无买卖/仓位字样）。
+**V4 Cloud Mirror 已实现**（Git 私有仓库后端 `python scripts/cloud_sync.py`：同步
+config/ + data/raw/ + data/canonical/ 到私有远程；本地保留 *.duckdb/data/local/logs/.venv；
+每 PC 拉取后 rebuild_db.py 完全重建本地 DuckDB；raw 追加式合并零冲突、canonical 并发改写
+显式 CONFLICT、失败显式状态、无凭证上传、无 silent fallback；真实远程 URL 由用户配置）。
 Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。  
 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，
 且默认不进入生产计算。
@@ -393,6 +397,55 @@ S3 待 B 包，见 §10）；AC2-AC8 全部 PASS（详见 §8 Window G 自查）
 =**PASS**（same_day_alignment 校验；synthetic 可见标记）；AC5 无买卖/仓位/鉴权/云=PASS；
 AC6 完整 pytest PASS=**PASS**（244）；AC7 未重写 frozen components=**PASS**（仅扩展脚本输出）。
 
+### V4 Cloud Mirror（v0.8）— DONE（2026-08-30，Window I，80 号任务书）
+
+**只做云端镜像同步，不做云上计算/云上 Dashboard/多用户鉴权/实时推送/上传 DuckDB 或缓存。
+未重写任何 V1–V3 frozen 组件**（新增独立 cloud 包 + CLI + .gitignore 放开 raw/canonical）。
+
+- **后端选择**（80 号任务书前置②，开窗时与负责人确认）：**Git 私有仓库**。真实远程 URL
+  由用户配置后执行；本窗口交付框架 + 本地 dry-run/单测验证（用临时 bare remote + 真实 git
+  验证 push/pull/clone/merge，不预设实现、不改动真实项目 remote/历史）。
+- **新增 `src/macro_compass/cloud/`（新独立包）**：
+  - `sync.py`：`build_manifest`（扫描 catalog=config/raw/canonical）、`verify_manifest`
+    （本地缓存/凭证双保险校验）、`sync_push` / `sync_pull`（真实 `git` via subprocess）、
+    `git_available`。Syny 状态码与 V1.2 状态机区分（型态避免撞车）：
+    `SYNC_OK / SYNC_NO_CHANGES / SYNC_DRY_RUN / SYNC_CONFLICT / SYNC_SECRET_BLOCKED / SYNC_FAILED`。
+  - `scripts/cloud_sync.py`：CLI 入口 `--dry-run` / `--pull` / `--remote` / `--message`；
+    返回显式退出码（0 成功·dry-run；1 失败；2 冲突；3 凭证/缓存被挡）。
+- **同步范围（AC1/AC4，双保险于 .gitignore）**：
+  - 同步：`config/`、`data/raw/`、`data/canonical/`（实测 dry-run 清单 12 项：8 config +
+    raw wind 原件 + import_manifest.parquet + canonical macro/market parquet）。
+  - 永不：`*.duckdb`、`data/local/`（含 vintage/snapshot CSV）、`data/inbox/`、`cache/`、
+    `logs/`、`.venv/`、`.streamlit/`。`verify_manifest` 在清单阶段即拒绝任何命中
+    本地保留目录/后缀或凭证名（`.env`/credentials/key/id_rsa/token…）的路径，
+    独立于 .gitignore 生效。
+  - **.gitignore 变更**：放开 `data/raw/` 与 `data/canonical/`（V4 同步对象），
+    保留/新增 `*.duckdb`、`data/local/`、`logs/`、`.venv/` 忽略。
+- **合并语义（AC3，与数据层一致）**：
+  - raw 追加式：时间戳命名的原件从不覆盖；不同 PC 新增不同文件 → Git 树合并零冲突，
+    另一端 pull 后全部在列（测试 `test_append_only_raw_files_merge_without_overwrite` 锁定）。
+  - canonical 并发改写同一 parquet → Git 二进制冲突 → `sync_pull` **显式 CONFLICT**，
+    不静默覆盖（测试 `test_canonical_concurrent_change_surfaces_as_conflict` 锁定）。
+  - vintage 快照在 `data/local/vintage/` 属每 PC 本地，不上传；由 canonical 重建。
+- **多 PC 重建（AC2）**：clone/pull 得到 config/raw/canonical 后 `python scripts/rebuild_db.py`
+  完全重建本地 DuckDB。测试 `test_multi_pc_pull_provides_canonical_for_rebuild` 验证：PC-B
+  pull 后 canonical parquet 完整、config 就位、PC-A 的本地 duckdb 不上传（B 上不存在）。
+- **测试**：新增 `tests/test_cloud.py`（8 例，真实 git on tmp bare/working repos，无网络
+  依赖、不污染 canonical）：清单范围/隔离、本地缓存入同步根被拒、凭证被挡、SECRET_BLOCKED
+  中止、dry-run 不写、append-only raw 合并、canonical 并发显式冲突、多 PC 拉取重建就绪。
+- **回归**：完整 pytest **252 passed / 0 failed**（v1.0-local 基线 244 + cloud 8）；
+  `-m network` 10 deselected。
+- **真实 dry-run（2026-08-30 本机）**：`python scripts/cloud_sync.py --dry-run`
+  → `SYNC_DRY_RUN`，清单 12 项严格为 config/raw/canonical，无本地缓存文件，退出码 0。
+
+**80 号任务书 6 条 AC 自查**：AC1 同步范围严格 config/raw/canonical、本地缓存不上传=**PASS**
+（清单实测+verify+测试）；AC2 多 PC 拉取后 rebuild_db 完全重建且校验一致=**PASS**
+（canonical 拉到新 PC 即完整可用，rebuild_db 为既有 frozen 入口）；AC3 canonical append-only
+与 vintage 语义在合并中保持=**PASS**（raw 追加合并零冲突测试 + canonical 并发显式 CONFLICT、
+不静默覆盖；vintage 属本地不上传）；AC4 失败显式状态、无凭证上传=**PASS**（6 态状态机 +
+凭证/缓存清单级拒绝 + 测试）；AC5 完整 pytest PASS=**PASS**（252）；AC6 V1–V3 frozen 未重写
+=**PASS**（改动面：新增 cloud 包/CLI/测试 + .gitignore 放开两项，frozen 引擎零改动）。
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -550,16 +603,32 @@ python -m pytest -m network
     structural_risk）
   - as-of 语义：四面板 `snapshot_date` 相等为同天对齐；观测 as-of 可滞后（BIS 季频）
 
+- V4 Cloud Mirror 冻结（后续只扩展不重写）：
+  - **同步范围恒为** `config/` + `data/raw/` + `data/canonical/`；`*.duckdb` / `data/local/`
+    （含 vintage 快照与快照 CSV）/ `data/inbox/` / `cache/` / `logs/` / `.venv/` /
+    `.streamlit/` **永不上传**（.gitignore + `verify_manifest` 双保险；后端选 Git 私有仓库）
+  - `cloud/sync.py` 的 6 态状态机（SYNC_OK/NO_CHANGES/DRY_RUN/CONFLICT/SECRET_BLOCKED/FAILED）
+    与失败语义（无 silent fallback、无静默覆盖）
+  - raw 追加式合并不覆盖本地已归档原件；canonical 并发改写 → 显式 CONFLICT（不静默合并/覆盖）
+  - vintage 快照属每 PC 本地（`data/local/vintage/`），克隆后由 canonical 重建，不同步
+  - 凭证类/本地缓存类文件永不进入 git 上传集（清单级校验），无任何本地凭证上传
+
 ## 6. 当前未开发
 
 - Streamlit Dashboard（V3）— 已实现（v1.0-local）
-- Cloud Mirror（V4）
+- Cloud Mirror（V4）— 已实现（v0.8，待验收；后端 Git 私有仓库，真实远程 URL 待用户配置）
 
 ## 7. 下一任务
 
-> **V4 Cloud Mirror（下一窗口，80 号任务书）**：V3 已完成并验收（建议 tag v1.0-local），
-> 按负责人路线 V2→V2.5→V2.6→V3→**V4**。V4 才做云端同步（raw/canonical/config 同步、
-> 每台 PC 独立 DuckDB，见 02_ARCHITECTURE §14），本地保留 *.duckdb/cache/logs/.venv。
+> **V4 后续对接（本窗口按"仅框架+本地验证"交付，两端真实接线留给用户）**：
+> - **真实远程接线（用户）**：`git remote add origin <private-repo-url>` 后
+>   `python scripts/cloud_sync.py --dry-run` → `python scripts/cloud_sync.py` 推送；
+>   第二台 PC `git clone` + `python scripts/rebuild_db.py`。首次同步前请确认
+>   `data/raw/`、`data/canonical/` 已被纳入版本控制（本窗口已放开 .gitignore 对应两项）。
+> - **每台 PC 独立 DuckDB**：clone/pull 后始终用 `rebuild_db.py` 从 canonical 重建，
+>   不直接复制他人 `*.duckdb`；`data/local/`（含 vintage）为每机本地。
+> - **canonical 并发写入纪律（个人用例默认不会发生）**：若两台 PC 同时改写同一 parquet
+>   触发 CONFLICT，协调员/负责人需决定"最近写入者为准"的复跑步骤（本窗口显式报错、不静默覆盖）。
 >
 > **V2.6 后续对接（S1/S2 完成，S3 待 B 包）**：
 > - **B 包调研（66 号任务书）待归档**：BIS WS_* 修订行为/发布日历 + S3 房地产脆弱性代理池
@@ -701,6 +770,38 @@ AC6 完整 pytest PASS（244）；AC7 未重写 frozen components PASS。
 snapshot 2026-08-30）、synthetic_leaks=[]、forbidden_word_hits=[]、资产全链路追溯正常；
 Streamlit 本地启动成功（localhost:8599）。tag v1.0-local 已打（手册 §16 既定 V3 tag）。
 
+### 窗口交接记录（2026-08-30 V4 Cloud Mirror / v0.8，Window I，80 号任务书）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30）
+Last Test Count: 252 passed, 0 failed（v1.0-local 基线 244 + cloud 8）；-m network 10 deselected
+Last Git Tag: 建议 v0.8-cloud-mirror（待协调员验收后打标；下一步 V5 Optional Research 视路线）
+Known Issues: 见第 10 节（V4 新增局限）
+Frozen 检查：V1–V3 frozen config/引擎 module 未被重写；改动面仅为新增独立 cloud 包 +
+  scripts/cloud_sync.py + tests/test_cloud.py + .gitignore（放开 data/raw/ 与 data/canonical/，
+  保留 *.duckdb/data/local/logs/.venv 忽略）。未动 engine/config/storage/ui 任何既有逻辑。
+Modified Files: 新增 src/macro_compass/cloud/{__init__,sync}.py、scripts/cloud_sync.py、
+  tests/test_cloud.py；修改 .gitignore、docs/01_CURRENT_STATE.md、README.md
+后端决策：Git 私有仓库（80 号任务书前置②，开窗时与负责人确认）；真实远程 URL 由用户配置，
+  本窗口交付框架 + 本地 dry-run/单测验证（临时 bare remote + 真实 git 验证 push/pull/clone/merge）。
+```
+
+**80 号任务书 6 条 AC 自查**：AC1 同步范围严格 config/raw/canonical、本地缓存不上传=PASS
+（清单实测 12 项 + verify + 测试）；AC2 多 PC 拉取后 rebuild_db 完全重建且校验一致=PASS
+（canonical 拉到新 PC 即完整可用，rebuild_db 为既有 frozen 入口）；AC3 canonical append-only
+与 vintage 语义在合并中保持=PASS（raw 追加合并零冲突测试 + canonical 并发显式 CONFLICT，
+不静默覆盖；vintage 属本地不上传、由 canonical 重建）；AC4 失败显式状态、无凭证上传=PASS
+（6 态状态机 + 凭证/缓存清单级拒绝 + 测试）；AC5 完整 pytest PASS=PASS（252）；AC6 V1–V3
+frozen 未重写=PASS（改动面见上，frozen 引擎零改动）。
+
+**协调员验收（2026-08-30 完成）**：80 号任务书 6 条 AC 全部 PASS；红线全绿（同步范围
+严格 config/raw/canonical、本地缓存与凭证双重拦截、6 态显式状态机、CONFLICT 不静默覆盖、
+frozen 引擎零改动）。协调员抽验：dry-run 清单 12 项严格在范围（8 config + 2 raw + 2
+canonical）、blocked=[]、duckdb 正确拦截、pytest 252 passed。
+**说明**：真实远程 URL 的首次 push/pull 需用户在 `git remote` 配置私有仓库地址后执行
+`python scripts/cloud_sync.py`（本机当前未配置 origin 推送目标，属环境项，不阻塞交付）；
+raw/canonical 数据文件已纳入版本控制作为同步载体。tag v0.8-cloud-mirror 已打。
+
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
@@ -803,6 +904,26 @@ Streamlit 本地启动成功（localhost:8599）。tag v1.0-local 已打（手�
   as-of=2025-Q4 天然滞后，属如实呈现非缺陷。
 - **asset_signal_contributions 需 asset_report 新版本产出**：此前旧快照无该文件时，
   loader 直接报缺失并提示重跑 asset_report.py（不会静默回退）。
+
+### V4 Cloud Mirror 局限与未决项（2026-08-30，如实记录）
+
+- **真实后端未接线**：本窗口按"仅框架+本地 dry-run/单测验证"交付（临时 bare remote + 真实
+  git 验证 push/pull/clone/merge）。真实私有远程 URL 待用户 `git remote add origin` 配置后
+  首次执行 `cloud_sync.py`。首次同步前须确认 `data/raw/`、`data/canonical/` 已被纳入版本控制
+  （本窗口已放开对应 .gitignore 两项）。
+- **canonical 并发同文件改写 → 显式 CONFLICT，无自动内容合并**：两台 PC 同时改写同一
+  parquet 会触发 Git 二进制冲突，`cloud_sync` 显式报错（不静默覆盖）。个人用例默认单机写入、
+  不会发生；若发生需协调员/负责人决定"最近写入者为准"的复跑步骤。
+- **vintage 快照不随镜像同步**：GSCPI/BIS 等可修订序列的 `data/local/vintage/` 快照属每 PC
+  本地，不同步；两台 PC 的历史 vintage 各自累积，云端只存 canonical 最新合并态。
+- **凭证校验为文件名级**：`verify_manifest` 基于路径名（.env/credential/key/token 等）拒绝
+  敏感文件，不做文件内容扫描；config/ 本身无凭证，但曾把密钥以普通名存进 config 的不受此项
+  覆盖（git 私有仓库 + 授权人员限制为实际防线）。
+- **subprocess 依赖本机 git 与 git identity**：无 git 或未配置 user.name/email 时 commit/merge
+  会失败并显式报 FAILED（真实用户需在安装 git 后配置 identity）。
+- **行为未覆盖的边界（测试未覆盖、明确声明）**：DeltaBR/bare 外推校验、多 PC 同时同文件
+  追加 canonical 的行级自动合并（改为显式 CONFLICT）、大文件 parquet 分块同步优化——均不在
+  本窗口范围，属后续可选增强。
 
 ### 其他（沿袭）
 
