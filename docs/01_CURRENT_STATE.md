@@ -488,6 +488,24 @@ Modified Files: 新增 config/assets.yaml、src/macro_compass/assets/{__init__,c
 fallback、Known Issues 有 blocker 分类）。tag v0.5-asset-compass 已打。
 ```
 
+### 窗口交接记录（2026-08-30 V2.5 Historical Validation / v0.6，Window F）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30）
+Last Test Count: 216 passed, 0 failed（205 基线 + 11：validation 包 coverage/history/methods/
+  lomo/regime_checks/report 纯函数测试）
+Last Git Tag: v0.6-validation（协调员验收通过后打标，2026-08-30）
+Known Issues: 见第 10 节（V2.5 局限与限制）
+Frozen 检查：V1/V1.2/V1.3/V1.5/V0.4c/V1.6A/V2 frozen components 未被重写
+  （validation 为新增独立只读包；未改 paths.py、未动任何既有 config/引擎）
+Modified Files: 新增 src/macro_compass/validation/{__init__,coverage,history,methods,lomo,
+  regime_checks,report}.py、scripts/validation_report.py、tests/test_validation.py；
+  修改 docs/01_CURRENT_STATE.md、README.md
+
+协调员验收（2026-08-30）：60 号任务书 10 条 Acceptance Criteria 全部 PASS；
+红线全绿（含"结论诚实"——样本不足明确标注，与负责人方案 §31 一致）。tag v0.6-validation 已打。
+```
+
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
