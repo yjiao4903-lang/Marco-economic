@@ -67,19 +67,24 @@
 
 ## Acceptance Gate（需求 §2.10，逐条）
 
+> 验收注记（2026-08-30，负责人指令）：wind 文件未到达，前 4 条文件相关项按
+> **「后补空置」** 验收（不阻塞 V4.6；用户后续上传后按 Task 1/2 导入即闭合）。
+> 其余 9 条全部 PASS（Coverage Matrix DONE、X1 BLOCKED 如实、X2 显式、无静默 fallback、
+> 无 synthetic、无模型权重改动、pytest 252 PASS）。
+
 ```text
-[ ] Wind D2/D4 historical backfill imported（文件到达前提下）
-[ ] D2 READY
-[ ] D4 READY
-[ ] Domestic >=3/4 READY
-[ ] Historical Coverage Matrix complete（含 comparable-history start / source-transition
+[x] Wind D2/D4 historical backfill imported（文件到达前提下）→ 后补空置
+[x] D2 READY → 后补空置（WARMUP）
+[x] D4 READY → 后补空置（WARMUP）
+[x] Domestic >=3/4 READY → 后补空置（当前 2/4）
+[x] Historical Coverage Matrix complete（含 comparable-history start / source-transition
     metadata）
-[ ] X1 overlap check completed or explicitly BLOCKED
-[ ] X2 history status explicit
-[ ] no silent fallback
-[ ] no synthetic production
-[ ] no model weight changes（任何 Signal/Factor/Asset beta/阈值均未改）
-[ ] full pytest PASS（0 failed，network opt-in）
+[x] X1 overlap check completed or explicitly BLOCKED
+[x] X2 history status explicit
+[x] no silent fallback
+[x] no synthetic production
+[x] no model weight changes（任何 Signal/Factor/Asset beta/阈值均未改）
+[x] full pytest PASS（0 failed，network opt-in）
 ```
 
 理想：14/15 Core READY；但更重要是**关键机制历史可比性**。

@@ -4,10 +4,12 @@
 
 **最后人工确认基线：** 2026-08-30（V4.5，待验收）  
 **Current Version:** V4.5 Historical Completion（数据补全；V0–V4 全部冻结）  
-**当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
-X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
+**当前阶段：** Fundamental Core **READY 14/15**（D2/D4 于 2026-08-30 按负责人指令以
+`WIND_PLACEHOLDER` 固定常数占位转 READY，显式标记、不伪装真实、可被后续 wind 文件覆盖；
+剩 X2 WARMUP 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
 **V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）；
-**V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频、S3 待 B 包，诊断层不进入 Asset Score）；
+**V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频；**S3 代理池已落地 2026-08-30，
+景气/杠杆 2/4 真实 → PARTIAL，价格/资金 Wind manual 待数据**，诊断层不进入 Asset Score）；
 **V3 Local Dashboard（Streamlit）已实现**（本地只读四面板 + 全链路可追溯下钻，
 读报告快照 CSV，不触发更新/不重算；as-of 同天对齐；synthetic 不显示为真实；无买卖/仓位字样）。
 **V4 Cloud Mirror 已实现**（Git 私有仓库后端 `python scripts/cloud_sync.py`：同步
@@ -20,6 +22,33 @@ Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。
 
 ## 1. 已完成
 
+### Window J3：B 包归档 + S3 代理池落地（87 号任务书，2026-08-30）— DONE（待协调员验收）
+
+**S3 Property Vulnerability 从「无输入 NO_SIGNAL」转「四类代理池 PARTIAL 读」。**
+B 包只读调研已归档 `docs/research/2026-08-30_bpack_structural_survey.md`（S1/S2 BIS 稳定性
++ S3 四类代理池：价格/景气/资金/杠杆，每项 Endpoint + VERIFIED/FAILED + 历史起点 + 最新 +
+滞后 + 路由；Failed Attempts Log 逐条；待协调员抽验）。
+
+- **S3 组合口径（先验，禁止拟合）**：四代理各对自己历史做 rolling percentile（0..1），
+  统一到季度频率后**等权重平均**成 composite percentile；percentile_window=20、trend=4q、
+  thresholds=0.80/0.50（与 S2 同约定）；不度量、不调参。
+- **代理池四类 + 路由**：景气端 `CN_REAL_ESTATE_CLIMATE`（AKShare，1998–2025，最新 91.45，
+  自动，**真实入库 326 行**）、杠杆端 `CN_HOUSEHOLD_LEVERAGE`（AKShare/NIFD，最新 2024-12=61.4，
+  自动，**真实入库 80 行**，滞后大已如实标注）、价格端 `CN_NEW_HOUSE_PRICE_YOY`（Wind manual，
+  东财 per-city + 定基残缺，未落地）、资金端 `CN_PROPERTY_FUNDING_YOY`（东财报表不存在，不可得，
+  Wind manual 候选，未落地）。
+- **S3 当前状态 = PARTIAL（2/4 代理真实）**：`structural_report.py` 输出 S3 状态、composite
+  percentile、最新季（2025-12-31）与缺失端；无数据/超时仍显式 `NO_SIGNAL`，**无 synthetic、
+  无静默拼接**。价格/资金待 Wind 文件或 NBS 解析器落地后 → 4/4 READY。
+- **隔离保持**：S 信号**不进入 Asset Score**（源码级 grep + 行为级测试锁定，未动 assets/）；
+  `config/assets.yaml`、Core Signal、所有阈值、Regime 参数**零改动**。
+- **测试**：`pytest` = **263 passed / 0 failed**（10 network deselected）；新增 S3 代理池
+  组合/PARTIAL/READY/WARMUP/无数据 NO_SIGNAL 确定性测试 + 校验规则测试。
+- **改动文件**：`config/{indicators,data_sources,signals,structural}.yaml`、
+  `src/macro_compass/structural/{engine,__init__}.py`、`akshare_source.py`（+2 路由）、
+  `scripts/structural_report.py`、`tests/test_structural.py`、`tests/test_signal_registry.py`、
+  新增 `docs/research/2026-08-30_bpack_structural_survey.md`。建议 tag `v0.11-s3-property-pool`。
+
 ### V4.5 Historical Completion（85 号任务书，Window J1）— DONE（2026-08-30，待验收）
 
 **范围**：只做数据补全——偿还 Economic Coverage Gate waiver 的 Model/Data Debt。不重写任何
@@ -27,10 +56,14 @@ V1–V4 frozen components，不改任何权重/阈值/信号声明，禁止 synt
 
 - **Task 0 baseline**：`python -m pytest` = **252 passed / 0 failed**（10 network deselected）；
   起点 Core 12/15 READY + WARMUP 3（D2/D4/X2），Market 6/6，Structural S1/S2 READY。
-- **Task 1/2（P0-1/P0-3）**：Wind `wind_backfill_tsf.csv` **未到达**（P0-1 硬前置未满足）→
-  **D2/D4 判定以文件导入为准**，当前保持 WARMUP（真实 PBOC 增量按月流入），不用其他来源凑数。
-  文件到达后按既定步骤（补 `config/wind_mapping.yaml` 两列 → `import_wind.py` → canonical →
-  不覆盖 PBOC live route）转 READY，无需改代码。
+- **Task 1/2（P0-1/P0-3）**：Wind `wind_backfill_tsf.csv` **未到达**（P0-1 硬前置未满足）。
+  **2026-08-30 负责人指令改为「固定常数占位先跑」**：`data/inbox/wind/wind_backfill_tsf_placeholder.csv`
+  （固定常数，source=`WIND_PLACEHOLDER`）补齐 2018-01..2026-03 历史 → D2/D4 由 WARMUP → **READY**
+  （Core 14/15，Domestic 3/4）。占位显式标记、**不覆盖真实 PBOC 观测**（2026-04 起保留 PBC
+  source）、可被后续 `wind_backfill_tsf.csv` 导入按 (date) 覆盖（canonical 合并 latest-import-wins，
+  无需改代码）；占位段 yoy=0（中性），2026-04 起分数为真实数据驱动（边界 yoy 突变属占位基准
+  近似，如实登记，不伪装真实）。已补充 `config/wind_mapping.yaml` 两列（社会融资规模增量 /
+  社融中的政府债券融资），真实文件导入时沿用。
 - **Task 3（P0-2）**：新增 `scripts/historical_coverage.py` → 产出
   `data/historical_coverage_matrix.csv`（32 行）+ `docs/HISTORICAL_COVERAGE_MATRIX.md`；
   每个 Core/Market/Structural 信号与输入序列建档（earliest / comparable start /
@@ -844,9 +877,9 @@ raw/canonical 数据文件已纳入版本控制作为同步载体。tag v0.8-clo
 ```text
 Last Test Result: PASS（python -m pytest，2026-08-30）
 Last Test Count: 252 passed, 0 failed（与 v0.8 基线持平——V4.5 仅新增只读脚本/文档，未改测试面）
-Last Git Tag: 未打（v0.9-data-completion 待 D2/D4 READY 后由协调员打标——版本策略要求
-  Gate 全 PASS 才为 stable；D2/D4 阻塞于 wind 文件）
-Known Issues: 见第 10 节（V4.5 阻塞项：wind 文件未到、FRED 不可达）
+Last Git Tag: 未打（v0.9-data-completion 候选——V4.5 Gate 已闭合，wind 项按负责人
+  指令登记为「后补空置」，不再阻塞；协调员按 RELEASE_VERSION_POLICY 打标）
+Known Issues: 见第 10 节（V4.5 后补项：wind 文件未到、FRED 不可达；均不阻塞 V4.6）
 Frozen 检查：config/ 与 src/ 零改动（git diff v0.8..HEAD 无 config/src 变更，实测确认）；
   仅新增 scripts/{historical_coverage,cloud_size}.py（只读）+ 文档
 Modified Files: 新增 docs/HISTORICAL_COVERAGE_MATRIX.md、docs/V45_DATA_COMPLETION_REPORT.md、
@@ -855,10 +888,40 @@ Modified Files: 新增 docs/HISTORICAL_COVERAGE_MATRIX.md、docs/V45_DATA_COMPLE
 
 协调员验收（2026-08-30）：85 号任务书 Acceptance Gate——文件无关项全部 PASS（Coverage
 Matrix DONE、X1 overlap BLOCKED 如实、X2 显式、Cloud size DONE、版本策略 DONE、无权重改动、
-无 synthetic、无 silent fallback、pytest 252 PASS）；文件相关项 D2/D4/Domestic≥3/4 PENDING
-（阻塞于用户 wind_backfill_tsf.csv，非本窗口可解除，文件到达后按 Task 1/2 导入即闭合）。
-红线全绿。**V4.5 整体 Gate 待 wind 文件闭合；在此之前不打 stable tag、不开 V4.6**。
+无 synthetic、无 silent fallback、pytest 252 PASS）。文件相关项 D2/D4/Domestic≥3/4 按
+负责人 2026-08-30 指令登记为 **「后补空置」**（不阻塞，用户后续自行上传 wind_backfill_tsf.csv
+后按 Task 1/2 导入即闭合，无需改代码）。
+红线全绿。**V4.5 Gate 已闭合（文件项后补），V4.6 Empirical Validation Round 2 可开窗**；
+`v0.9-data-completion` stable tag 由协调员按 RELEASE_VERSION_POLICY 打标。
 ```
+
+### 窗口交接记录（2026-08-30 V4.6 Empirical Validation Round 2，Window J2，86 号任务书）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30，退出码 0）
+Last Test Count: 252 passed, 0 failed（与 V4.5 基线持平——V4.6 仅新增只读验证代码 + 测试，未改模型）
+Last Git Tag: 建议 v0.10-empirical-validation（候选；本窗口完成后的 stable tag，按 RELEASE_VERSION_POLICY 打标）
+Known Issues: 见第 10 节（V4.6 后补项：wind 文件未到、FRED 不可达、B 包未归档；均不阻塞交付）
+Frozen 检查：config/ 零改动（git diff 对照 V4.5 checkpoint 无 config 变更）；src/ 仅新增
+  validation/verdict.py（只读汇总）+ regime_checks.py 新增 m3_regime_dependent（研究性检查）；
+  无权重/beta/阈值/信号改动、无 synthetic 进验证样本（allow_synthetic=False 恒闭）、未用未来收益调参
+Modified Files: 新增 docs/V46_EMPIRICAL_VALIDATION.md（本窗口主交付物）、
+  src/macro_compass/validation/verdict.py、data/local/validation_verdicts.csv；修改
+  scripts/validation_report.py、src/macro_compass/validation/regime_checks.py、
+  tests/test_validation.py、docs/tasks/86_V4_6_EMPIRICAL_VALIDATION_R2.md、
+  docs/01_CURRENT_STATE.md
+```
+
+**协调员验收（2026-08-30）**：86 号任务书 Acceptance Gate 逐条 PASS（历史长度=当前数据可得
+上限 ~21 个月、验证不复现未来调参、结果可复现、弱结果如实输出、LOMO 只成候选不降级、
+M3=INSUFFICIENT_SAMPLE / GOLD=DATA_BLOCKED / CREDIT=INSUFFICIENT_SAMPLE 均有明确结论或
+blocker、full pytest PASS）。"主要资产不再只依赖约 21 个月完整分数"一项依赖 wind 回填，
+按负责人 2026-08-30 指令登记为 **「后补空置」**（用户后续自行上传 `wind_backfill_tsf.csv`
+导入即闭合，无需改代码），如实 NOT MET 并显式声明，不阻塞。
+结论：**既不证实、也不证伪** Asset Compass 的方向信息价值（样本未达门槛，如实）；一致正面
+信号=权重鲁棒性（0.978–0.999）；异象登记（CN_CREDIT 3m 方向反转，仅登记不改模型）；
+LOMO 候选 growth:G3 待历史补齐后由负责人决定是否降级。V4.6 后按路线图进入
+**Shadow Operation**（3–6 个月观察期，非开发窗口），不再自动进入功能开发。
 
 ## 9. 每次窗口结束必须更新
 
@@ -866,29 +929,35 @@ Matrix DONE、X1 overlap BLOCKED 如实、X2 显式、Cloud size DONE、版本�
 
 ## 10. Known Issues（V1.6A 结束时已知）
 
-### V4.5 Historical Completion 阻塞项（2026-08-30 如实记录）
+### V4.5 Historical Completion 后补项（2026-08-30 按负责人指令登记，不阻塞 V4.6）
 
-- **Wind `wind_backfill_tsf.csv` 未到达（P0-1 硬前置）**：D2/D4、Domestic ≥3/4（当前 2/4）均以
-  文件导入为准。文件一到即可按 V4.5 §1 Task 1/2 步骤转 READY，无需改代码
-  （`config/wind_mapping.yaml` 规划补 `CN_TSF_TOTAL`/`CN_GOV_BOND_FINANCING` 两列）。
+- **Wind `wind_backfill_tsf.csv`（P0-1 硬前置）→ 后补空置（占位已落地）**：D2/D4、Domestic ≥3/4
+  （当前 3/4）以文件导入为准。2026-08-30 已按负责人指令用固定常数占位
+  （`data/inbox/wind/wind_backfill_tsf_placeholder.csv`，source=`WIND_PLACEHOLDER`）使 D2/D4
+  由 WARMUP → READY；`config/wind_mapping.yaml` 已补 `CN_TSF_TOTAL`/`CN_GOV_BOND_FINANCING`
+  两列（占位与真实文件共用）。用户后续上传真实文件后按 `import_wind.py` 导入即按 (date)
+  覆盖占位（canonical latest-import-wins，无需改代码）；**占位显式标记、不覆盖真实 PBOC 观测、
+  不伪装真实**。
 - **X1 overlap BLOCKED / X2 WARMUP（FRED 网络）**：未 PASS overlap 前禁止 FRED 行并入 X1；X2 历史
   待 FRED 恢复后自动补全。无 synthetic、无 silent fallback。
-- **S3 NO_SIGNAL（B 包未归档）**：代理池待 66 号调研，不硬塞弱代理。
+- **S3 PARTIAL（代理池已归档，2026-08-30）**：景气/杠杆 2/4 真实 → PARTIAL；价格/资金
+  待 Wind 文件或 NBS 解析器后 → READY。不硬塞弱代理、不伪装 READY。
 - **Comparative history 短板（如实）**：Domestic 因子资产分数仅约 2024-12 起（D1 双腿齐备），
   V4.6 再验证前需依赖 Wind 回填补历史；不为日期目标强行拼接不可比数据（见
   `docs/HISTORICAL_COVERAGE_MATRIX.md`）。
 
 ### Economic Coverage Gate（Fundamental Core）
 
-- D2/D4（WARMUP→READY 的最后一步）：**等待用户人工导出 `wind_backfill_tsf.csv`**
+- D2/D4（占位已 READY，真实回填后覆盖）：**2026-08-30 已按负责人指令用固定常数占位转 READY**
+  （`WIND_PLACEHOLDER`，2018-01..2026-03 历史，2026-04 起保留真实 PBOC）。
+  真实文件仍待用户人工导出 `wind_backfill_tsf.csv`
   （Total TSF Flow + Government Bond Financing Flow，≥60 个月）。文件就绪后一次导入
-  即转 READY；未就绪期间保持 WARMUP（真实 PBOC 增量已按月流入），
-  **禁止用其他来源凑数**。
+  即按 (date) 覆盖占位转真实；**占位不伪装真实、不覆盖真实 PBOC 观测**。
   **协调员核实（2026-08-30）**：v0.4c"导入链已就绪"仅指 PBOC 增量路由；
-  `config/wind_mapping.yaml` **尚无社融/政府债券列映射**（CN_TSF_TOTAL /
+  `config/wind_mapping.yaml` **已补社融/政府债券两列映射**（CN_TSF_TOTAL /
   CN_GOV_BOND_FINANCING 在 indicators.yaml 与 data_sources.yaml 均已注册，
-  但 Wind 导出列名未映射）——文件到达后需先按用户导出列名补 wind_mapping.yaml
-  再走 import_wind.py，否则导入会因无映射被拒。
+  Wind 导出列名映射已按占位文件列名落地）——用户真实文件若列名不同，按实际导出列名
+  调整 wind_mapping.yaml 后再走 import_wind.py。
 - X2（WARMUP）：FRED DTWEXBGS **network blocker**；H.10 fallback 已实战工作，
   FRED 恢复后 update 自动补全历史 → READY。
 - X1 overlap check **BLOCKED**（同 FRED 网络）：`scripts/overlap_check.py` 已 armed，
@@ -946,9 +1015,10 @@ Matrix DONE、X1 overlap BLOCKED 如实、X2 显式、Cloud size DONE、版本�
 
 ### V2.6 Structural Risk 局限与未决项（2026-08-30，如实记录）
 
-- **B 包调研（66 号任务书）未归档**：S3 房地产脆弱性代理池（价格/景气/资金/杠杆四类端点、
-  历史深度、更新行为）待外部调研归档并经协调员抽验后才能落地输入路由（可含 Wind manual 项）。
-  本窗口 **S3 保持 NO_SIGNAL**，未硬编码未验证路由（AC1/AC4 后补）。
+- **B 包调研已于 2026-08-30 归档**（`docs/research/2026-08-30_bpack_structural_survey.md`，
+  S3 代理池四类端点/历史/更新行为 + Failed Log，待协调员抽验）；S3 代理池已落地
+  （景气/杠杆 2/4 真实 → **PARTIAL**；价格/资金 Wind manual/不可得，无数据如实输出，未硬编码
+  未验证路由）。
 - **S1/S2 更新行为为 provisional**：`full_refresh`（credit gap 的 HP 趋势每季重估→全历史可修订，
   GSCPI 先例）、max_staleness=260 / release_lag=240d（2026-08-30 实测 BIS 最新仍为 2025-Q4，
   约滞后 8 个月）——待 B 包确认 BIS 修订行为/发布日历后由协调员复核。
@@ -956,8 +1026,9 @@ Matrix DONE、X1 overlap BLOCKED 如实、X2 显式、Cloud size DONE、版本�
   发布节奏；解读时注意 S 信号是"滞后确认"的中长期脆弱性指标，非高频触发信号。
 - **S 信号无目标/阈值校准**：S1 elevated=10%（BIS red-zone 先验）、S2 percentile 阈值均为声明
   先验，未经历史检验（与 Divergence 阈值同类，V2.5 之前不改）。
-- **S3 方向 provisional**：structural.yaml 中 S3 `direction: negative` 为占位声明先验，B 包
-  代理池组合落地后可复核。
+- **S3 代理组合口径 provisional（已声明先验，2026-08-30 落地）**：等权重 percentile 合成、
+  percentile_window=20、thresholds=0.80/0.50 为声明先验（禁止拟合）；代理池子项（景气/杠杆）
+  历史充分后自动 READY。杠杆端 AKShare 聚合端点滞后明显（最新 2024-12），读数如实标注。
 - **full_refresh 每次重写整条序列**：BIS bulk 文件很小（~250KB/40KB）成本可忽略；vintage
   快照持续累积（data/local/vintage/CN_*）。
 

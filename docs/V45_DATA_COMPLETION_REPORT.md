@@ -8,10 +8,10 @@
 
 | 交付项 | 状态 |
 |---|---|
-| Wind D2/D4 historical backfill imported | **PENDING**（`wind_backfill_tsf.csv` 未到达） |
-| D2 READY | 未达成（WARMUP，等文件） |
-| D4 READY | 未达成（WARMUP，等文件） |
-| Domestic >= 3/4 READY | **当前 2/4**（D1/D3 READY；D2/D4 WARMUP）——文件到达导入后转 4/4 |
+| Wind D2/D4 historical backfill imported | **后补空置**（负责人 2026-08-30 指令：`wind_backfill_tsf.csv` 用户后续自行上传） |
+| D2 READY | 未达成（WARMUP，后补空置） |
+| D4 READY | 未达成（WARMUP，后补空置） |
+| Domestic >= 3/4 READY | **当前 2/4**（D1/D3 READY；D2/D4 WARMUP）——文件后补导入后转 4/4 |
 | Historical Coverage Matrix complete | **DONE**（含 comparable start / source-transition / breakpoint） |
 | X1 overlap check | **BLOCKED**（FRED 读取超时，如实；未 PASS 前不拼 FRED） |
 | X2 history status explicit | **DONE（WARMUP + 显式 blocker）** |

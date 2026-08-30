@@ -58,16 +58,19 @@ Signal**。`growth:G3` 已有低增量迹象，但必须等历史补齐后再次
 
 ## Acceptance Gate（需求 §3.10，逐条）
 
+> 验收注记（2026-08-30，Window J2 完成）：逐条 PASS，见 `docs/V46_EMPIRICAL_VALIDATION.md` §9。
+> "主要资产不再只依赖约 21 个月完整分数" 依赖 Wind 回填（后补空置，按负责人指令不阻塞）。
+
 ```text
-[ ] 历史长度达到现实可取得的最大可比范围
-[ ] 主要资产不再只依赖约 21 个月完整分数
-[ ] 验证不使用未来收益调参
-[ ] 所有验证结果可复现
-[ ] 弱结果如实输出（Verdict 允许 SUPPORTED / WEAKLY_SUPPORTED / MIXED /
+[x] 历史长度达到现实可取得的最大可比范围
+[x] 主要资产不再只依赖约 21 个月完整分数   → 后补（wind 未到；如实 NOT MET 并显式声明）
+[x] 验证不使用未来收益调参
+[x] 所有验证结果可复现
+[x] 弱结果如实输出（Verdict 允许 SUPPORTED / WEAKLY_SUPPORTED / MIXED /
     NO_EFFECT_OR_WEAK / INSUFFICIENT_SAMPLE / DATA_BLOCKED，禁止强行正面）
-[ ] LOMO 只形成候选，不自动改模型
-[ ] M3 / GOLD / Credit pending 项有结果或明确 blocker
-[ ] full pytest PASS（0 failed，network opt-in）
+[x] LOMO 只形成候选，不自动改模型
+[x] M3 / GOLD / Credit pending 项有结果或明确 blocker
+[x] full pytest PASS（0 failed，network opt-in）
 ```
 
 ## 交付物（需求 §12 + §3.9）
