@@ -253,6 +253,49 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
    leave-one-check 检验是否应赋符号。
 
 
+### V2.5 Historical Validation（v0.6）— DONE（2026-08-30，Window F，60 号任务书）
+
+**只读验证层交付**（全部与生产计算隔离；未重写任何 V1–V2 frozen 组件，验收见 §8 Window F）：
+- 新增 `src/macro_compass/validation/` 包：
+  - `history.py`：PIT 历史重建。所有声明 transform 均为后向滚动（无中心化），因此按日期
+    截断信号帧再经冻结 `macro.factors.compute_factor` 聚合 = 该日期的真实 PIT 因子分数
+    （与 V2 自身 1M/3M change 同法）。月频网格上重建 growth/inflation/domestic/global
+    因子分数面板 → 按声明 prior beta 的 L1 归一化重建 7 资产分数（同 `assets.engine` 公式）。
+    因子覆盖率（当日被计分的非零 β 权重占比）逐日保留，供判读"早期只有部分因子"。
+  - `coverage.py`：**Historical Coverage Matrix**（15 Core 全量建档）——各信号输入序列的
+    earliest observation / provider / update_policy / revision_risk（full_refresh=HIGH、
+    replace_window=MEDIUM、append=LOW，含声明覆盖修正）+ 已声明 breakpoints（OECD
+    基期重编、X1 Treasury/FRED 切换前置、G3 NBS 口径切换、G4 累计口径、M4 派生 AAA 3Y
+    利差、D3 派生精度、D1 政策利率阶梯序列）+ 每条信号的 minimum_validation_start=PIT
+    首次可计分日。外加 **backfill 缺口评估**（Wind 一次性回填候选清单，标注仍缺月份）。
+  - `methods.py`：**五方法**（forward returns / score bucket / regime analysis / rolling
+    beta / weight robustness）。纯函数、逐资产逐 horizon（1M/3M）输出 verdict
+    （statistic / n / adequate / conclusion）。前瞻收益用 canonical 市场序列代理：
+    CSI300/HSI/铜为价格收益、USD/CNY 取负、10Y CGB 收益=−ModDur×Δyield（声明 8y）、
+    AAA 信用债=−ModDur×Δspread（声明 3.5y，弱代理）——**均为显式近似，非拼接、非 synthetic**。
+  - `lomo.py`：**Leave-One-Mechanism-Out**（逐因子逐机制剔除，重算因子/资产分数，测
+    factor stability + min asset stability + max forward-separation delta）。候选门控为
+    纯函数 `lomo_candidate`：样本不足（n<60）或机制自身计分日期占比 <50%（刚接入）或
+    因子不稳定或分离度移动 >0.05 一律不判候选——**杜绝把样本不充分误当"有效/无效"结论**。
+  - `regime_checks.py`：两条 R2 待检验项专门检验（见 §10 结论）。
+  - `report.py` / `scripts/validation_report.py`：输出总览 + 落盘 `data/local/validation_*.csv`。
+  测试：`tests/test_validation.py`（11 个，纯函数 on synthetic，无网络、不污染 canonical）。
+
+**关键发现（如实，结论=样本不足，非"有效/无效"）**：
+- **四因子完整资产分数量纲仅约 21 个月（~2024-12 起）**：growth/inflation/global 因子虽有
+  2006+ 长历史，但 **domestic_financial 因子直到 2024-12 才有 D1 可计分**（D1 差分子需
+  DR007[2017]+ 政策利率[2024] 双腿齐备），导致 2015–2024 的资产分数缺 domestic 腿
+  （覆盖率 ~0.65–0.86）。远低于负责人最低样本（2012/2015–present）。
+- **五方法**：在部分覆盖率下以 NO_EFFECT_OR_WEAK 为主（47/63 达 n≥60 的样本条，但
+  属探索性）；唯一 borderline 反向 CN_CREDIT 3m rho≈−0.17。weight_robustness 全部
+  WEIGHT_ROBUST（~0.98–0.99，prior 权重对方案扰动稳健）。
+- **LOMO**：早见 **growth:G3（硬活动）** 为唯一低增量候选（因子稳定 0.97、分离度移动 0.044）。
+  **仅建议，未降级**；G2/G4/X2（刚接入）与 D2/D4（样本不足）已正确排除出候选。
+- **回归检验**：黄金实际利率脱钩 **DATA_BLOCKED**（real canonical 无 GOLD 现货——现有
+  GOLD 36 行为 synthetic 已隔离；且 X1 仅 2024 起，故 2022 断点不可观测 → 加入回填）；
+  信用债资金面敏感 **INSUFFICIENT_SAMPLE**（D1 历史仅 ~19 对齐样本）。
+
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -388,19 +431,21 @@ python -m pytest -m network
 ## 6. 当前未开发
 
 - Structural Risk 引擎（V2.6；registry 中已占位）
-- Historical Validation（V2.5）/ Streamlit Dashboard（V3）/ Cloud Mirror（V4）
+- Streamlit Dashboard（V3）/ Cloud Mirror（V4）
 
 ## 7. 下一任务
 
-> **V2.5 Historical Validation（下一窗口，60 号任务书已补全）**：负责人明确 V2 之后
-> 立即 V2.5，不做 UI，防"看起来合理=有效"认知偏差。60 号含负责人新增的 Information
-> Increment / Leave-One-Mechanism-Out 要求，并纳入 V2 交付报告的三条 V2.5 待检验项
-> （黄金实际利率脱钩、信用债资金面敏感、ambiguous 零权单元格）。V2.5 前置待办
-> （不阻塞开窗）：wind_backfill_tsf.csv 回填（D2/D4）、FRED 恢复（X2/X1 overlap）、
-> B 包调研（66 号，V2.6 前置）——均标记后补。
+> **V2.6 Structural Risk（下一窗口，65 号任务书 + 66 号数据调研已就绪）**：V2.5 已完成，
+> 按负责人路线 V2→V2.5→**V2.6 Structural Risk**→V3。B 包调研档案已归档
+> `docs/research/2026-08-30_data_layer_round2_validation.md` / 66 号任务书。
 >
-> **V2 交付对接（已完成）**：V2 Asset Compass（v0.5）已于 2026-08-30 验收 PASS，
-> tag `v0.5-asset-compass` 已打（见第 8 节 Window E）。
+> **V2.5 前置回填待办（登入 backfill gaps，不阻塞 V2.6，但决定 V2.5 再验证质量）**：
+> wind_backfill_tsf.csv（D2/D4）、PMI 新订单/购进价格、核心 CPI、房地产历史、政策利率历史、
+> USD_BROAD、real 黄金现货 + 2022 前 10Y 实际利率（供 GOLD 脱钩检验）——均走既有
+> Wind manual import 链，无新爬虫。
+>
+> **V2.5 交付对接（已完成 · 本窗口）**：60 号任务书 10 条 Acceptance Criteria 见 §8
+> Window F 自查与结论。
 >
 > **协调职责延续（2026-08-30 起）**：工作手册见 **docs/COORDINATOR_HANDOFF.md**
 > （含验收程序、待办队列、后续任务书素材与红线清单）。
@@ -499,6 +544,21 @@ fallback、Known Issues 有 blocker 分类）。tag v0.5-asset-compass 已打。
 - **市场确认非 1:1**：GOLD 无对应 M 信号，market_signal=null（n/a）；其余按 8 字段并列展示。
 - **V2.5 待检验**（见第 1 节 V2 小节 + config/assets.yaml `v25_pending`）：黄金实际利率脱钩、
   信用债资金面高敏感、ambiguous 零权单元格是否应赋符号。
+
+### V2.5 Historical Validation 局限与限制（2026-08-30，如实记录）
+
+- **样本核心限制**：四因子完整资产分数量纲仅约 21 个月（~2024-12 起，D1 历史不足）。
+  growth/inflation/global 虽有 2006+ 历史，但 2015–2024 资产分数缺 domestic 腿——五方法
+  在部分覆盖率上的"NO_EFFECT_OR_WEAK"**非强证伪**，属探索性。
+- **前瞻收益均为代理，非资产真实收益**：股票/铜=价差收益、债券=−ModDur×Δyield（8y）、
+  AAA 信用=−ModDur×Δspread（3.5y，弱代理）、GOLD 仅 synthetic（无真实现货）。
+- **黄金脱钩 DATA_BLOCKED**：real canonical 无 GOLD 现货、X1 仅 2024 起，2022 断点不可观测
+  → 须回填 pre-2022 gold + 10Y 实际利率后才能再验证。
+- **信用债资金面敏感 INSUFFICIENT_SAMPLE**：D1 对齐样本 ~19，样本不足判断。
+- **LOMO candidate=growth:G3 仅为建议**：未经负责人批准，任何 Core 均未降级；G2/G4/X2
+  （刚接入）、D2/D4（样本不足）已排除出候选，勿过度解读为"有效"。
+- **结论边界**：本窗口的"（暂时）不能验证"是数据覆盖问题的如实结果，不是模型能力的否定；
+  也不代表 60 样本线是统计保证，all 结论均为工程/探索级判断而非统计显著性。
 
 ### 其他（沿袭）
 

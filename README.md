@@ -3,7 +3,7 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V2 Asset Compass（v0.5）**（V0–V1.6A、v0.4d 全部冻结）。
+> 当前开发阶段：**V2.5 Historical Validation（v0.6）**（V0–V1.6A、v0.4d、V2 全部冻结）。
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
@@ -12,7 +12,15 @@
 > **V2 Asset Compass 7/7 real READY**（`python scripts/asset_report.py` 输出 7 资产
 > Score/View/1M/3M/逐因子与逐信号贡献/市场确认/置信快照；资产层只读 factor+market 输出，
 > 无反向流；View 仅顺风/逆风/中性，无买卖/仓位字样）。
-> Regime = TRANSITION。资产评分（V2）已完成，Dashboard（V3）尚未开发。
+> **V2.5 Historical Validation（v0.6）已实现**（`python scripts/validation_report.py`）：
+> Historical Coverage Matrix（15 Core 全量建档）+ 五方法验证（forward returns / score bucket /
+> regime / rolling beta / weight robustness）+ LOMO 信息增量检验 + 两条 R2 regime 待检验项。
+> 验证结论（如实）：**样本不足以作定论** —— 四因子完整资产分数量纲仅约 2024-12 起，低于负责人
+> 最低样本（2012/2015–present）；五方法在部分覆盖率下以 NO_EFFECT_OR_WEAK 为主（探索性）；
+> 黄金实际利率脱钩 DATA_BLOCKED（无真实 2022 前历史）、信用债资金面敏感 INSUFFICIENT_SAMPLE；
+> LOMO 早见 growth:G3 为低增量候选（仅建议，未降级）。回填清单见
+> `python scripts/validation_report.py` 输出 / `data/local/validation_backfill_gaps.csv`。
+> Regime = TRANSITION。Dashboard（V3）尚未开发。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
 ## 目录结构
@@ -104,6 +112,10 @@ python scripts/market_report.py --today 2026-08-01
 # V2 Asset Compass 快照：7 资产 Score/View/1M/3M + 逐因子/逐信号贡献 + 市场确认 + 置信
 python scripts/asset_report.py                   # 写 data/local/asset_scores.csv
 python scripts/asset_report.py --today 2026-08-01
+
+# V2.5 Historical Validation：Coverage Matrix + 五方法 + LOMO + 两条 regime 检验
+python scripts/validation_report.py              # 写 data/local/validation_*.csv
+python scripts/validation_report.py --today 2026-08-01
 
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest
