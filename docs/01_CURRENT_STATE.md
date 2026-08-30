@@ -341,11 +341,15 @@ python -m pytest -m network
 
 ## 7. 下一任务
 
-> **V2 Asset Compass**（见 docs/tasks/55_V2_ASSET_COMPASS.md）。前置 Gate：
-> ① Economic Coverage Gate 完成（D2/D4 等 wind_backfill_tsf.csv、X2 等 FRED 恢复）；
+> **V2 Asset Compass（已开窗，2026-08-30）**：见 docs/tasks/55_V2_ASSET_COMPASS.md。
+> 前置 Gate 状态（协调员 2026-08-30 更新）：
+> ① Economic Coverage Gate **负责人豁免开放**（D2/D4 的 wind_backfill_tsf.csv、X2 的 FRED
+>    补历史均标记**后补**——开发不阻塞，数据就绪后一次导入即转 READY；
+>    B 包外部调研（66 号，V2.6 前置）同样标记后补）；
 > ② V1.6A Market Confirmation PASS（已由协调员验收，tag v0.4d-market-confirmation）；
 > ③ R2 资产先验矩阵转写（调研已归档 docs/research/2026-08-30_R2_asset_prior_matrix.md）。
-> 三项齐备后新开窗口。V1.6A 交付内容冻结，不要在 V2 窗口改动 market 层口径。
+> V1.6A 交付内容冻结，不要在 V2 窗口改动 market 层口径。后补数据不得以 synthetic
+> 冒充真实进 production（沿用 V1.5D 隔离，缺口以 WARMUP/PARTIAL 显式保留）。
 >
 > **协调职责（2026-08-30 起）**：D1 交付后的验收、后续任务书起草与外部调研管理
 > 由新协调员窗口接手，工作手册见 **docs/COORDINATOR_HANDOFF.md**（含 D1 验收

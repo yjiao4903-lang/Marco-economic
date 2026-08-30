@@ -16,11 +16,14 @@ Cloud（V4）、ML/HMM、组合优化、自动交易、行业轮动、个股选�
 `config/market.yaml`、`market/engine.py` 口径、M4/M6 口径）。V2 只读 factor 输出与
 market 层输出，不反向修改任何 Fundamental/Market 引擎。
 
-## 前置三 Gate（缺一不可，协调员逐个确认后才可开窗）
+## 前置 Gate 状态（协调员 2026-08-30 更新：负责人豁免部分后补项，V2 已开窗）
 
-1. **Economic Coverage Gate PASS**：D2/D4 已由 `wind_backfill_tsf.csv` 导入转 READY、
-   X2 FRED 恢复补全历史、X1 overlap check PASS（若含存量列，D3 历史同步加固）。
-   未达成时本窗口不得开工（协调员按 COORDINATOR_HANDOFF §9 跟进）。
+1. **Economic Coverage Gate — 负责人豁免开放**（2026-08-30 负责人授权）：
+   D2/D4 的 `wind_backfill_tsf.csv` 导入、X2 FRED 补历史、X1 overlap check PASS、
+   B 包调研（66 号）均标记**后补**——**不阻塞本窗口开发**。数据/调研就绪后由协调员
+   补齐导入与归档，D2/D4 届时自动转 READY。本窗口不得以 synthetic 冒充真实数据
+   （沿用 V1.5D production 隔离；缺失输入以 WARMUP/PARTIAL 显式保留，engine 对
+   null 输入按既有语义处理，禁止静默补 0 或伪造）。
 2. **V1.6A Market Confirmation PASS**：tag `v0.4d-market-confirmation`（2026-08-30 已验收，
    192 passed + network opt-in 通过）。
 3. **R2 资产先验矩阵调研完成并经协调员验收**：已归档
