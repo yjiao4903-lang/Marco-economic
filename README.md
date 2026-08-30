@@ -3,7 +3,14 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V4 Cloud Mirror（v0.8，待验收）**（V0–V3 全部冻结）。
+> 当前开发阶段：**V4.5 Historical Completion（待验收）**（V0–V4 全部冻结）。
+> V4.5 只做数据补全：新增 `scripts/historical_coverage.py`（Historical Coverage Matrix 32 行 + 
+> `docs/HISTORICAL_COVERAGE_MATRIX.md`，含 source-transition 元数据）、`scripts/cloud_size.py`
+>（Cloud size monitor，`data/local/cloud_size_report.csv`）、`docs/RELEASE_VERSION_POLICY.md`
+>（Product Milestone vs Git Tag + 建议 `v0.9-data-completion`）。D2/D4 仍等 `wind_backfill_tsf.csv`
+>（P0-1 硬前置未满足，WARMUP，Domestic 2/4）；X1 overlap check=BLOCKED（FRED 网络）、X2 WARMUP、
+> S3 NO_SIGNAL——全部显式、无 synthetic、无静默拼接、无模型改动（`git diff v0.8 config/` 为空）。
+> 交付报告 `docs/V45_DATA_COMPLETION_REPORT.md`。
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
@@ -153,6 +160,12 @@ python scripts/cloud_sync.py --dry-run   # 只打印待同步清单，不写/不
 python scripts/cloud_sync.py             # 推送：verify -> add -> commit -> pull(merge) -> push
 python scripts/cloud_sync.py --pull      # 多 PC 拉取最新 config/raw/canonical
 git remote add origin <your-private-repo-url>   # 首次配置真实远程（用户自行执行）
+
+# V4.5 Historical Completion（数据补全，只读）
+python scripts/historical_coverage.py    # Coverage Matrix：data/historical_coverage_matrix.csv
+                                         #   + docs/HISTORICAL_COVERAGE_MATRIX.md（含 source-transition）
+python scripts/cloud_size.py             # Cloud size monitor：data/local/cloud_size_report.csv
+# 文档：docs/RELEASE_VERSION_POLICY.md（Milestone vs Tag）、docs/V45_DATA_COMPLETION_REPORT.md
 ```
 
 ## 多 PC 同步 / 重建流程（V4 Cloud Mirror）

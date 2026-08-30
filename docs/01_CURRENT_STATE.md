@@ -2,8 +2,8 @@
 
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
-**最后人工确认基线：** 2026-08-30（v0.4d）  
-**Current Version:** V4 Cloud Mirror（v0.8，待验收；V0–V3 全部冻结）  
+**最后人工确认基线：** 2026-08-30（V4.5，待验收）  
+**Current Version:** V4.5 Historical Completion（数据补全；V0–V4 全部冻结）  
 **当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
 X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
 **V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）；
@@ -19,6 +19,43 @@ Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。
 且默认不进入生产计算。
 
 ## 1. 已完成
+
+### V4.5 Historical Completion（85 号任务书，Window J1）— DONE（2026-08-30，待验收）
+
+**范围**：只做数据补全——偿还 Economic Coverage Gate waiver 的 Model/Data Debt。不重写任何
+V1–V4 frozen components，不改任何权重/阈值/信号声明，禁止 synthetic、禁止静默拼接、禁止改模型。
+
+- **Task 0 baseline**：`python -m pytest` = **252 passed / 0 failed**（10 network deselected）；
+  起点 Core 12/15 READY + WARMUP 3（D2/D4/X2），Market 6/6，Structural S1/S2 READY。
+- **Task 1/2（P0-1/P0-3）**：Wind `wind_backfill_tsf.csv` **未到达**（P0-1 硬前置未满足）→
+  **D2/D4 判定以文件导入为准**，当前保持 WARMUP（真实 PBOC 增量按月流入），不用其他来源凑数。
+  文件到达后按既定步骤（补 `config/wind_mapping.yaml` 两列 → `import_wind.py` → canonical →
+  不覆盖 PBOC live route）转 READY，无需改代码。
+- **Task 3（P0-2）**：新增 `scripts/historical_coverage.py` → 产出
+  `data/historical_coverage_matrix.csv`（32 行）+ `docs/HISTORICAL_COVERAGE_MATRIX.md`；
+  每个 Core/Market/Structural 信号与输入序列建档（earliest / comparable start /
+  minimum_validation_start / current_source / historical_source / frequency / revision_risk /
+  breakpoints / status / blocker）。**关键可比历史短板 = Domestic（D1 仅 2024-12 起、D3 仅
+  2026-04 起）**；其余 growth/inflation/global 及 S1/S2 多满足 2012–present。绝不强行拼接。
+- **Task 4（P0 纪律）**：`historical_coverage.py` 内嵌 `SOURCE_TRANSITIONS` 元数据——TSF/Gov-Bond
+  （Wind vs PBOC 定义同源，导入后须 overlap 校验再合并）、US_REAL_YIELD_10Y（Treasury vs FRED
+  DFII10 定义同源但合并门 = overlap PASS）、USD_BROAD（FRED vs H.10 同定义）、政策利率
+  （MANUAL 台阶 vs PBC OMO 同公告可比）、G3（OECD 指数 vs NBS 增速**单位不同不拼接**）。
+- **Task 5（P0-4）**：`scripts/overlap_check.py`（Treasury vs FRED DFII10）→ **BLOCKED**（FRED
+  读取超时）。未 PASS（≥60 共同交易日至 0.05）前禁止把 FRED 行并入 X1；当前 X1 canonical 无
+  FRED 行，无拼接发生。
+- **Task 6（P0-5）**：X2 `USD_BROAD`（primary FRED DTWEXBGS / fallback H.10）= **WARMUP**（5 期
+  < 250），历史 blocker=FRED 网络，显式记录；FRED 恢复后自动补历史 → READY。
+- **Task 7（P1）**：新增 `scripts/cloud_size.py` → `data/local/cloud_size_report.csv`（repo 字节 /
+  new_bytes_this_sync / config / raw / canonical / vintage 文件数与字节；本地产物不上传；不迁移
+  LFS/OneDrive/对象存储）。实测 repo ~1.32MB。
+- **Task 8（P1）**：新增 `docs/RELEASE_VERSION_POLICY.md`——区分 Product Milestone vs Git
+  Release Tag、命名约定、Semantic Stable Tag 判定、历史 tag 快照；建议冻结 **`v0.9-data-completion`**
+  （不覆盖 v0.8/v1.0）。
+- **交付报告**：`docs/V45_DATA_COMPLETION_REPORT.md`（含 source-transition 对照、D2/D4/X1/X2 状态、
+  回填记录、验收对照）。
+- **frozen 检查**：`git diff v0.8-cloud-mirror..HEAD config/` 为空；src 引擎零改动。新增内容全部为
+  只读脚本/文档/矩阵/报告。
 
 ### V0 Foundation — DONE
 - Python 项目骨架、YAML 配置、synthetic fixtures
@@ -802,11 +839,44 @@ canonical）、blocked=[]、duckdb 正确拦截、pytest 252 passed。
 `python scripts/cloud_sync.py`（本机当前未配置 origin 推送目标，属环境项，不阻塞交付）；
 raw/canonical 数据文件已纳入版本控制作为同步载体。tag v0.8-cloud-mirror 已打。
 
+### 窗口交接记录（2026-08-30 V4.5 Historical Completion，Window J1，85 号任务书）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30）
+Last Test Count: 252 passed, 0 failed（与 v0.8 基线持平——V4.5 仅新增只读脚本/文档，未改测试面）
+Last Git Tag: 未打（v0.9-data-completion 待 D2/D4 READY 后由协调员打标——版本策略要求
+  Gate 全 PASS 才为 stable；D2/D4 阻塞于 wind 文件）
+Known Issues: 见第 10 节（V4.5 阻塞项：wind 文件未到、FRED 不可达）
+Frozen 检查：config/ 与 src/ 零改动（git diff v0.8..HEAD 无 config/src 变更，实测确认）；
+  仅新增 scripts/{historical_coverage,cloud_size}.py（只读）+ 文档
+Modified Files: 新增 docs/HISTORICAL_COVERAGE_MATRIX.md、docs/V45_DATA_COMPLETION_REPORT.md、
+  docs/RELEASE_VERSION_POLICY.md、data/historical_coverage_matrix.csv（32 行）、
+  scripts/{historical_coverage,cloud_size}.py；修改 docs/01_CURRENT_STATE.md、README.md
+
+协调员验收（2026-08-30）：85 号任务书 Acceptance Gate——文件无关项全部 PASS（Coverage
+Matrix DONE、X1 overlap BLOCKED 如实、X2 显式、Cloud size DONE、版本策略 DONE、无权重改动、
+无 synthetic、无 silent fallback、pytest 252 PASS）；文件相关项 D2/D4/Domestic≥3/4 PENDING
+（阻塞于用户 wind_backfill_tsf.csv，非本窗口可解除，文件到达后按 Task 1/2 导入即闭合）。
+红线全绿。**V4.5 整体 Gate 待 wind 文件闭合；在此之前不打 stable tag、不开 V4.6**。
+```
+
 ## 9. 每次窗口结束必须更新
 
 - Current Version / Completed / Tests / Known Issues / Frozen Components / Next Task / Git
 
 ## 10. Known Issues（V1.6A 结束时已知）
+
+### V4.5 Historical Completion 阻塞项（2026-08-30 如实记录）
+
+- **Wind `wind_backfill_tsf.csv` 未到达（P0-1 硬前置）**：D2/D4、Domestic ≥3/4（当前 2/4）均以
+  文件导入为准。文件一到即可按 V4.5 §1 Task 1/2 步骤转 READY，无需改代码
+  （`config/wind_mapping.yaml` 规划补 `CN_TSF_TOTAL`/`CN_GOV_BOND_FINANCING` 两列）。
+- **X1 overlap BLOCKED / X2 WARMUP（FRED 网络）**：未 PASS overlap 前禁止 FRED 行并入 X1；X2 历史
+  待 FRED 恢复后自动补全。无 synthetic、无 silent fallback。
+- **S3 NO_SIGNAL（B 包未归档）**：代理池待 66 号调研，不硬塞弱代理。
+- **Comparative history 短板（如实）**：Domestic 因子资产分数仅约 2024-12 起（D1 双腿齐备），
+  V4.6 再验证前需依赖 Wind 回填补历史；不为日期目标强行拼接不可比数据（见
+  `docs/HISTORICAL_COVERAGE_MATRIX.md`）。
 
 ### Economic Coverage Gate（Fundamental Core）
 

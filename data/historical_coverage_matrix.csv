@@ -1,0 +1,33 @@
+﻿signal_id,layer,name,factor,input_series,role,earliest_observation,comparable_history_start,minimum_validation_start,current_source,historical_source,frequency,revision_risk,breakpoints,status,blocker
+G1,core,China CLI,growth,CHN_CLI,level,1992-05-01,1992-05-01,1992-05-01,oecd,same as current / n/a,monthly,MEDIUM,,READY,
+G2,core,PMI New Orders,growth,CHN_PMI_NEW_ORDERS,level,2025-10-31,2025-10-31,2025-10-31,nbs+wind_manual,same as current / n/a,monthly,LOW,,READY,
+G3,core,Hard Activity Composite,growth,CN_IND_PROD_YOY,preferred,2008-02-29,2008-02-29,2008-02-29,akshare+wind_manual,same as current / n/a,monthly,LOW,,READY,
+G3,core,Hard Activity Composite,growth,CN_RETAIL_SALES_YOY,preferred,2008-01-31,2008-02-29,2008-02-29,akshare+wind_manual,same as current / n/a,monthly,LOW,,READY,
+G3,core,Hard Activity Composite,growth,CHN_IND_PROD_INDEX,fallback,1996-01-01,2008-02-29,2008-02-29,oecd,same as current / n/a,monthly,MEDIUM,,READY,
+G3,core,Hard Activity Composite,growth,CHN_RETAIL_SALES_INDEX,fallback,1978-01-01,2008-02-29,2008-02-29,oecd,same as current / n/a,monthly,MEDIUM,,READY,
+G4,core,Property Demand Composite,growth,CN_PROPERTY_SALES_AREA,component,2025-09-30,2025-09-30,2025-09-30,nbs+wind_manual,same as current / n/a,monthly,LOW,,READY,
+G4,core,Property Demand Composite,growth,CN_PROPERTY_SALES_VALUE,component,2025-09-30,2025-09-30,2025-09-30,nbs+wind_manual,same as current / n/a,monthly,LOW,,READY,
+G5,core,Export Demand,growth,CHN_EXPORT_YOY,level,1992-02-01,1992-02-01,1992-02-01,oecd,same as current / n/a,monthly,MEDIUM,,READY,
+I1,core,Consumer Inflation,inflation,CN_CORE_CPI_YOY,preferred,2025-10-31,2012-12-31,2012-12-31,nbs+wind_manual,NBS CPI release historical (via update pipeline),monthly,LOW,I1 fallback semantics fixed (core/headline kept as separate series_id),READY,
+I1,core,Consumer Inflation,inflation,CN_CPI_YOY,fallback,2008-01-31,2012-12-31,2012-12-31,akshare+wind_manual,same as current / n/a,monthly,LOW,,READY,
+I2,core,Industrial Inflation,inflation,CN_PPI_YOY,level,2006-01-31,2010-12-31,2010-12-31,akshare+wind_manual,same as current / n/a,monthly,LOW,,READY,
+I3,core,Cost Pressure Composite,inflation,CHN_PMI_INPUT_PRICE,component,2024-10-31,2002-08-31,2002-08-31,nbs+wind_manual,same as current / n/a,monthly,LOW,,READY,
+I3,core,Cost Pressure Composite,inflation,US_GSCPI,component,1997-09-30,2002-08-31,2002-08-31,nyfed,same as current / n/a,monthly,HIGH,,READY,
+D1,core,Funding Condition,domestic_financial,CN_DR007,spread_leg,2017-05-31,2024-12-30,2024-12-30,chinamoney+akshare,same as current / n/a,daily,LOW,,READY,
+D1,core,Funding Condition,domestic_financial,CN_POLICY_RATE_7D,spread_leg,2024-01-01,2024-12-30,2024-12-30,pbc+manual_series,Committed step file data/manual_series/ (MANUAL provenance bootstrap),daily,MEDIUM,"event/step series, flat between cuts (non-continuous but defined)",READY,
+D2,core,Private Credit Impulse,domestic_financial,CN_TSF_TOTAL,spread_leg,2026-04-30,,,pbc+akshare,Wind one-shot backfill wind_backfill_tsf.csv (PENDING file),monthly,MEDIUM,none declared yet; validate before merging,WARMUP,"wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice"
+D2,core,Private Credit Impulse,domestic_financial,CN_GOV_BOND_FINANCING,spread_leg,2026-04-30,,,pbc,Wind one-shot backfill wind_backfill_tsf.csv (PENDING file),monthly,MEDIUM,none declared yet; validate before merging,WARMUP,"wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice"
+D3,core,Excess Liquidity,domestic_financial,CN_M2_YOY,spread_leg,2008-01-31,2026-04-30,2026-04-30,akshare+wind_manual,same as current / n/a,monthly,LOW,,READY,
+D3,core,Excess Liquidity,domestic_financial,CN_PRIVATE_TSF_YOY,spread_leg,2026-04-30,2026-04-30,2026-04-30,pbc,same as current / n/a,monthly,LOW,,READY,
+D4,core,Fiscal Support,domestic_financial,CN_GOV_BOND_FINANCING,level,2026-04-30,,,pbc,Wind one-shot backfill wind_backfill_tsf.csv (PENDING file),monthly,MEDIUM,none declared yet; validate before merging,WARMUP,"wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice"
+X1,core,US 10Y Real Yield,global_financial,US_REAL_YIELD_10Y,level,2024-01-02,2024-12-31,2024-12-31,treasury+fred,FRED DFII10 (fallback; NOT merged - overlap BLOCKED by FRED network),daily,LOW,source-switch gate documented in data_sources.yaml,READY,FRED DFII10 unreachable (overlap BLOCKED 2026-08-30) - no FRED rows merged yet
+X2,core,Broad USD,global_financial,USD_BROAD,level,2026-08-17,,,fred+fed_h10,FRED DTWEXBGS (network BLOCKED; only H.10 fallback live so far),daily,LOW,none declared; explicit WARMUP blocker,WARMUP,"FRED DTWEXBGS unreachable - only H.10 fallback weeks, history insufficient (WARMUP)"
+X3,core,ANFCI,global_financial,ANFCI,level,1971-01-08,1973-12-28,1973-12-28,chicagofed+fred,same as current / n/a,weekly,MEDIUM,,READY,
+M1,market,CSI 300,-,CSI300,confirmation,2002-01-04,,,eastmoney+akshare,same as current / n/a,daily,LOW,,READY,
+M2,market,Hang Seng Index,-,HSI,confirmation,2013-08-20,,,eastmoney+akshare,same as current / n/a,daily,LOW,,READY,
+M3,market,China 10Y Government Yield,-,CN_GOV_YIELD_10Y,confirmation,2023-05-17,,,chinabond+wind_manual,same as current / n/a,daily,LOW,,READY,
+M4,market,AAA Credit Spread,-,CN_AAA_CREDIT_SPREAD,confirmation,2007-12-21,,,chinabond+wind_manual,same as current / n/a,daily,LOW,,READY,
+M5,market,USD/CNY,-,USD_CNY,confirmation,2016-01-04,,,chinamoney+wind_manual,same as current / n/a,daily,LOW,,READY,
+M6,market,Industrial Commodity / Copper Proxy,-,COPPER_PRICE,confirmation,2016-08-30,,,akshare,same as current / n/a,daily,LOW,,READY,
+S1,structural,Credit-to-GDP Gap,-,CN_CREDIT_TO_GDP_GAP,level,1995-12-31,,,bis,same as current / n/a,quarterly,HIGH,,READY,
+S2,structural,Debt Service Ratio,-,CN_DSR,level,1999-03-31,,,bis,same as current / n/a,quarterly,HIGH,,READY,
