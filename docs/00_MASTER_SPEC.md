@@ -259,7 +259,12 @@ V2.5      Historical Validation
 V2.6      Structural Risk                  ← 原 V1.6 的一部分，后移
 V3        Local Dashboard
 V4        Cloud Mirror
-V5        Optional Research
+V4.5      Historical Completion            ← 2026-08-30 负责人批准（偿还 Coverage Gate
+                                              Waiver 数据债；补齐真实历史供经验验证）
+V4.6      Empirical Validation Round 2     ← 2026-08-30 负责人批准（V4.5 Gate 通过后开窗）
+Shadow Operation                           ← V4.6 后 3–6 个月观察（非开发窗口）
+Product Stable Review                      ← 决定是否模型升级 / Signal 精简 / 新功能
+V5        Optional Research                ← 原占位，优先级在 Shadow 之后
 ```
 
 未经用户明确批准，不应跳版本。
@@ -268,3 +273,14 @@ V5        Optional Research
 > Structural Risk）+ V2 之前插入 V1.2C + V1.5D 两个数据质量 Gate；Structural Risk 从
 > V1.6 后移至 V2.6（其不进入短期 Asset Score，不应因 BIS 数据阻塞 V2）。任务书见
 > `docs/tasks/45_V1_2C_V1_5D_DATA_QUALITY_GATES.md`。
+>
+> 修订记录（2026-08-30，经项目负责人批准，来源需求文档
+> `Personal_Macro_Asset_Compass_V4.5-V4.6_数据补全与经验验证开发需求_V1.0.md`）：V0–V4
+> 工程完成（Engineering Foundation COMPLETE；Empirical Validation INCOMPLETE）。插入
+> **V4.5 Historical Completion**（正式偿还 Economic Coverage Gate Waiver 数据债：Wind
+> D2/D4 回填、Historical Coverage Matrix、source-transition 纪律、X1 overlap、X2 状态、
+> Cloud size monitor、RELEASE_VERSION_POLICY）与 **V4.6 Empirical Validation Round 2**
+> （补齐历史后重跑五方法 + LOMO + M3/Gold/Credit 研究性检验；Verdict 如实，禁强行正面；
+> 禁以验证结果改权重）。V4.6 后进入 **Shadow Operation**（3–6 个月，Decision Journal +
+> Shadow Metrics）→ **Product Stable Review**。任务书见
+> `docs/tasks/85_V4_5_HISTORICAL_COMPLETION.md`、`docs/tasks/86_V4_6_EMPIRICAL_VALIDATION_R2.md`。
