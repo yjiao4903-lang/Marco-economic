@@ -37,6 +37,8 @@ def _build_series(rng: np.random.Generator) -> dict[str, np.ndarray]:
     usdcny = 7.15 + 0.10 * np.sin(2 * np.pi * t / 28) + rng.normal(0, 0.02, N_MONTHS)
     csi300 = 3900.0 * np.exp(np.cumsum(rng.normal(0.002, 0.03, N_MONTHS)))
     gold = 1950.0 * np.exp(np.cumsum(rng.normal(0.004, 0.02, N_MONTHS)))
+    tsf = 25000.0 + 4000.0 * np.sin(2 * np.pi * t / 20) + rng.normal(0, 1500, N_MONTHS)
+    gov_bond = 5000.0 + 1500.0 * np.cos(2 * np.pi * t / 16) + rng.normal(0, 600, N_MONTHS)
 
     return {
         "PMI": pmi,
@@ -47,6 +49,8 @@ def _build_series(rng: np.random.Generator) -> dict[str, np.ndarray]:
         "美元兑人民币:中间价": usdcny,
         "沪深300": csi300,
         "黄金现货:SHTAU": gold,
+        "社会融资规模增量": tsf,
+        "社融中的政府债券融资": gov_bond,
     }
 
 

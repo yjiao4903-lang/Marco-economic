@@ -625,3 +625,85 @@ series:
       (percent). Bulk CSV zip endpoint verified 2026-08-30
       (1999-Q1 .. 2025-Q4, latest 18.8%). S2 of the Structural Risk layer;
       never enters the short-term Asset Score.
+
+  # --- V2.6 S3 proxy pool (B-package, docs/research/2026-08-30_bpack_
+  #     structural_survey.md) ------------------------------------------------
+  # Structural diagnostics ONLY - never enter the short-term Asset Score.
+  # 景气/杠杆 endpoints auto-fetched (AKShare access layer, verified 2026-08-30);
+  # 价格/资金 registered but Wind manual (no auto route this window - price is
+  # a per-city panel with a broken BASE fill, funding reports do not exist at
+  # eastmoney). Manual routes keep the MANUAL_REQUIRED semantic.
+  CN_REAL_ESTATE_CLIMATE:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_REAL_ESTATE_CLIMATE"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 520   # observed cap 2025-12 across BOTH AKShare and
+                              # eastmoney RPT_INDUSTRY_INDEX (independent
+                              # sources) -> the series may be discontinued by
+                              # NBS; budget reflects the observed cadence.
+    freshness:
+      expected_release_lag_days: 300
+    original_source: >
+      国房景气指数 (real estate climate index, %-based subindex aggregation)
+      via AKShare access layer (upstream eastmoney RPT_INDUSTRY_INDEX,
+      INDICATOR_ID=EMM00121987, original_source 国家统计局). 326 monthly rows
+      from 1998-01, latest 91.45 (2025-12). S3 景气端代理; never enters the
+      short-term Asset Score.
+    manual_instructions: >
+      Export 国房景气指数 from Wind to data/inbox/wind/ and run
+      python scripts/import_wind.py <file>
+  CN_HOUSEHOLD_LEVERAGE:
+    primary: akshare
+    fallback: wind_manual
+    provider_code: "CN_HOUSEHOLD_LEVERAGE"
+    frequency: quarterly
+    category: macro
+    max_staleness_days: 730   # deployed AKShare macro_cnbs aggregate caps at
+                              # 2024-12 (~20-month aggregator lag on 2026-08-30);
+                              # budget reflects this access-layer cadence.
+    freshness:
+      expected_release_lag_days: 120
+    original_source: >
+      居民部门宏观杠杆率 (household-sector leverage ratio, %) from NIFD /
+      PBOC financial stability, via AKShare access layer (macro_cnbs).
+      80 quarterly rows from ~2015, latest 61.4 (2024-12). Update lag is large -
+      the freshness budget reflects the observed publication lag; the season is
+      reported honestly (PARTIAL). S3 杠杆端代理; never enters the short-term
+      Asset Score.
+    manual_instructions: >
+      Export 居民部门宏观杠杆率 (季度) from Wind to data/inbox/wind/ and run
+      python scripts/import_wind.py <file>
+  CN_NEW_HOUSE_PRICE_YOY:
+    primary: wind_manual
+    provider_code: "NEW_HOUSE_PRICE_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 120
+    original_source: >
+      70城新建商品住宅销售价格指数同比 (New-commodity-home price index YoY).
+      S3 价格端代理. Eastmoney RPT_ECONOMY_HOUSE_PRICE is reachable (latest
+      2026-07) but it is a per-city panel and BASE (定基) is only partially
+      filled from 2022-12 (84/187) - a national YoY proxy needs an explicit
+      city-pooling口径 decision (not in this window), so the series is routed
+      Wind manual and reports no data until imported. Never enters the
+      short-term Asset Score.
+    manual_instructions: >
+      Export 70城新建商品住宅销售价格指数:当月同比 (or a pooling you endorse)
+      from Wind to data/inbox/wind/ and run python scripts/import_wind.py <file>
+  CN_PROPERTY_FUNDING_YOY:
+    primary: wind_manual
+    provider_code: "PROPERTY_FUNDING_YOY"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 120
+    original_source: >
+      房地产开发企业本年到位资金累计同比 (RE developer funding YTD YoY).
+      S3 资金端代理. eastmoney report config does not exist (code=9501,
+      Failed Attempts Log); NBS news-release parsing is feasible but the parser
+      is not built this window - series routed Wind manual, reports no data
+      until imported. Never enters the short-term Asset Score.
+    manual_instructions: >
+      Export 房地产开发企业本年到位资金:累计同比 from Wind to data/inbox/wind/
+      and run python scripts/import_wind.py <file>

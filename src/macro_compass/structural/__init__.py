@@ -14,6 +14,7 @@ from macro_compass.structural.config import (
 )
 from macro_compass.structural.engine import (
     MISSING_INPUT,
+    PARTIAL,
     READY,
     StructuralReading,
     WARMUP,
@@ -22,6 +23,7 @@ from macro_compass.structural.engine import (
 
 __all__ = [
     "MISSING_INPUT",
+    "PARTIAL",
     "READY",
     "StructuralConfigError",
     "StructuralReading",

@@ -113,8 +113,10 @@ def main() -> None:
 
     print(f"=== Structural Risk snapshot - generated {today.date()} ===")
     print(
-        "diagnostic layer: S1/S2 on BIS quarterly long series; S3 proxy pool "
-        "pending B-package. Structural risk NEVER enters the short-term Asset Score."
+        "diagnostic layer: S1/S2 on BIS quarterly long series; S3 = four-category "
+        "property proxy pool (景气/杠杆/价格/资金), equal-weight percentile "
+        "composite, PARTIAL while any category lacks data. "
+        "Structural risk NEVER enters the short-term Asset Score."
     )
 
     _print_readings(registry, readings, staleness, structural_config)
@@ -135,8 +137,12 @@ def _print_readings(registry, readings, staleness, structural_config) -> None:
             continue
         as_of = r.as_of.date().isoformat() if r.as_of is not None else "-"
         source = r.source or r.series_id
+        if r.inputs_total > 1:
+            label = f"proxy-pool {r.available_count}/{r.inputs_total}"
+        else:
+            label = r.series_id
         print(
-            f"      status: {display:<10} series={r.series_id:<22} as_of={as_of}"
+            f"      status: {display:<10} series={label:<18} as_of={as_of}"
             f"  source={source} ({r.provenance})"
         )
         print(
@@ -146,10 +152,15 @@ def _print_readings(registry, readings, staleness, structural_config) -> None:
         )
         if r.message:
             print(f"      note: {r.message}")
+        budget = (
+            "per-proxy"
+            if r.inputs_total > 1
+            else f"{staleness.get(r.series_id, 260)}d"
+        )
         print(
             f"      direction convention: {r.direction} (rising = more fragile); "
             f"history {r.history_length} obs, freshness {r.freshness_days}d "
-            f"(budget {staleness.get(r.series_id, 260)}d)"
+            f"(budget {budget})"
         )
 
 
@@ -165,6 +176,8 @@ def _write_snapshot(registry, readings, snapshot_date=None) -> None:
                 "engine_status": r.status,
                 "display_status": _display_status(r),
                 "direction_convention": r.direction,
+                "inputs_total": r.inputs_total,
+                "available_count": r.available_count,
                 "as_of": r.as_of.date().isoformat() if r.as_of is not None else "",
                 "snapshot_date": snapshot_date or "",
                 "history_start": r.history_start.date().isoformat() if r.history_start is not None else "",

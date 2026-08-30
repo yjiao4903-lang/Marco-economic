@@ -186,6 +186,39 @@ def test_mechanism_scored_share_pure():
     assert mechanism_scored_share(comps, grid)["late"] == pytest.approx(0.5, abs=0.05)
 
 
+def test_m3_regime_dependent_blocks_without_data():
+    from macro_compass.validation.regime_checks import m3_regime_dependent
+    sample = _synthetic_sample()  # series={} -> no yield series
+    res = m3_regime_dependent(sample, None)
+    assert res.check_id == "M3_REGIME"
+    assert res.conclusion in ("DATA_BLOCKED", "INSUFFICIENT_SAMPLE")
+
+
+def test_m3_regime_dependent_splits_by_growth():
+    from macro_compass.validation.regime_checks import m3_regime_dependent
+    idx = _month_ends()
+    rng = np.random.default_rng(3)
+    # 60+ month-ends of yield; build a series with a downward 3M leg region
+    yield_vals = 3.0 + 0.001 * rng.normal(0, 1, len(idx))
+    yield_series = pd.Series(yield_vals, index=idx)
+    fp = pd.DataFrame(
+        {"growth": np.where(idx.month >= 6, 0.3, -0.3)},
+        index=idx,
+    )
+    fwd3 = pd.Series(rng.normal(0, 0.02, len(idx)), index=idx)
+    scores = pd.DataFrame({"CN_GOV_BOND": rng.normal(0, 0.3, len(idx))}, index=idx)
+    cov = pd.DataFrame(1.0, index=idx, columns=["CN_GOV_BOND"])
+    fwd = {"CN_GOV_BOND": pd.DataFrame({"fwd_1m": fwd3, "fwd_3m": fwd3}, index=idx)}
+    sample = ValidationSample(fp, scores, cov, fwd,
+                              series={"CN_GOV_YIELD_10Y": yield_series})
+    res = m3_regime_dependent(sample, None)
+    assert res.check_id == "M3_REGIME"
+    assert res.conclusion in (
+        "REGIME_DEPENDENT", "REGIME_DEPENDENT_REVERSED",
+        "NOT_REGIME_DEPENDENT", "INSUFFICIENT_SAMPLE",
+    )
+
+
 def test_coverage_matrix_15_signals():
     indicators = load_indicator_config(paths.INDICATORS_YAML)
     registry = load_signal_registry(paths.SIGNALS_YAML, indicators_registry=indicators)

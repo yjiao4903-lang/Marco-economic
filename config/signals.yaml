@@ -506,8 +506,27 @@ signals:
     name: Property Vulnerability
     layer: structural
     mechanism: >
-      Composite of property demand exhaustion and price stagnation measuring
-      the build-up of a property-sector tail risk. Not part of the short-term
-      Asset Score. The proxy-pool inputs land with B-package
-      (docs/tasks/66) - declared without inputs until then, so the layer
-      reports NO_SIGNAL (no synthetic fill, no unverified hardcoded route).
+      Composite of property-sector fragility across four proxy categories
+      (景气 = real-estate climate; 杠杆 = household leverage; 价格 = 70-city
+      new-home price YoY; 资金 = developer funding YoY). Each proxy is
+      positioned against its own history as a rolling percentile, then the
+      available proxies are combined with equal weight into one composite
+      percentile (0..1) on a common quarterly index - a non-fitted declared
+      prior, never an Asset Score input. Not part of the short-term Asset
+      Score. Pool composition and routing archived in
+      docs/research/2026-08-30_bpack_structural_survey.md; 景气/杠杆 land with
+      real data this window (auto source), 价格/资金 are registered but
+      Wind-manual / undelivered, so the composite honestly reports PARTIAL
+      until their data arrives (never a synthetic fill).
+    inputs:
+      - series_id: CN_REAL_ESTATE_CLIMATE
+        role: component
+      - series_id: CN_HOUSEHOLD_LEVERAGE
+        role: component
+      - series_id: CN_NEW_HOUSE_PRICE_YOY
+        role: component
+      - series_id: CN_PROPERTY_FUNDING_YOY
+        role: component
+    combination: average   # equal-weight percentile composite (structural engine)
+    transforms:
+      - type: level        # per-proxy basis; aggregation is a percentile mean

@@ -62,3 +62,19 @@ columns:
     frequency: monthly
     unit: usd_per_oz
     name: 黄金现货
+
+  # V4.5/V4.6: TSF / government-bond financing - Wind one-shot backfill
+  # (wind_backfill_tsf.csv) OR explicit WIND_PLACEHOLDER constant history.
+  "社会融资规模增量":
+    series_id: CN_TSF_TOTAL
+    category: macro
+    frequency: monthly
+    unit: bn_cny
+    name: 社会融资规模增量
+
+  "社融中的政府债券融资":
+    series_id: CN_GOV_BOND_FINANCING
+    category: macro
+    frequency: monthly
+    unit: bn_cny
+    name: 社融中的政府债券融资

@@ -198,7 +198,7 @@ def test_availability_statuses(registry) -> None:
     assert states["X1"].status == MISSING_INPUT  # registered but no FRED data
     assert states["M1"].status == DECLARED       # market placeholder w/ data
     assert states["M2"].status == MISSING_INPUT  # HSI absent
-    assert states["S3"].status == DECLARED       # structural placeholder, no inputs
+    assert states["S3"].status == MISSING_INPUT  # proxy pool declared but no data
     assert states["G3"].missing == [
         "CN_RETAIL_SALES_YOY",
         "CHN_IND_PROD_INDEX",

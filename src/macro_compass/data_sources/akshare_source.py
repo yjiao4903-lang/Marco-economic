@@ -115,6 +115,35 @@ def fetch_macro_series(akshare, code: str) -> tuple[list, list]:
         col = "社会融资规模增量"
         dates = [_month_cn(v) for v in frame["月份"]]
         values = pd.to_numeric(frame[col], errors="coerce")
+    # --- V2.6 S3 proxy pool (B-package): structural diagnostics only, never
+    #     enters the short-term Asset Score.
+    elif code == "CN_REAL_ESTATE_CLIMATE":
+        # 国房景气指数 (climate index), upstream eastmoney RPT_INDUSTRY_INDEX /
+        # original_source NBS; verified 2026-08-30, 326 monthly rows 1998-2025.
+        frame = akshare.macro_china_real_estate()
+        col = "最新值"
+        # the 日期 column carries datetime.date objects ("1998-01-01"): map to
+        # month-end timestamps (the engine's S3 aggregation resamples to
+        # quarter-end anyway).
+        dt = pd.to_datetime(frame["日期"], errors="coerce")
+        dates = [
+            (ts + pd.offsets.MonthEnd(0)) if pd.notna(ts) else None for ts in dt
+        ]
+        values = pd.to_numeric(frame[col], errors="coerce")
+    elif code == "CN_HOUSEHOLD_LEVERAGE":
+        # 居民部门宏观杠杆率 (NIFD/PBOC financial stability), avert AKShare
+        # macro_cnbs; verified 2026-08-30, quarterly, latest 2024-12=61.4%.
+        frame = akshare.macro_cnbs()
+        col = "居民部门"
+        dates = []
+        for v in frame["年份"]:
+            try:
+                parts = str(v).strip().split("-")
+                y, m = int(parts[0]), int(parts[1])
+                dates.append(pd.Timestamp(year=y, month=m, day=1))  # month start
+            except Exception:
+                dates.append(None)
+        values = pd.to_numeric(frame[col], errors="coerce")
     elif code == "CN_DR007":
         # FDR007 fixing: depository-institution 7-day repo (the fixing of
         # DR007) - used as the history backfill of CN_DR007. The interface

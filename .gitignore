@@ -14,3 +14,7 @@ logs/
 *.egg-info/
 build/
 dist/
+# One-off B-package research scratch scripts (archived findings live in
+# docs/research/2026-08-30_bpack_structural_survey.md; the raw probes are
+# machine-local, not deliverable).
+_scratch_b_research/

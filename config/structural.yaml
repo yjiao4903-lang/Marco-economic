@@ -23,9 +23,11 @@
 #                       - S2 uses percentile thresholds of the DSR's own
 #                         history (percentile_window).
 #
-# S3 (Property Vulnerability) has NO inputs until the B-package research
-# (docs/tasks/66) is archived and the proxy pool is verified - it reports
-# NO_SIGNAL rather than a synthetic or unverified reading.
+# S3 (Property Vulnerability) is a four-category proxy pool (景气/杠杆/价格/资金)
+# landed with B-package (docs/research/2026-08-30_bpack_structural_survey.md).
+# It combines the AVAILABLE proxies (equal-weight percentile composite) and
+# reports PARTIAL honestly when some categories have no data - never a
+# synthetic fill, never an unverified route.
 
 version: 1
 
@@ -47,10 +49,16 @@ signals:
       moderate_percentile: 0.50
 
   S3:
-    # proxy-pool inputs land with B-package (docs/tasks/66); none declared yet
-    placeholder: true
-    note: 代理池待 B 包调研归档后落地
-    # direction is a provisional declared prior (rising composite = more
-    # fragile) kept so the config schema stays strict (no implicit
-    # assumptions); the B-package proxy combination may revisit it.
-    direction: negative
+    # S3 (Property Vulnerability) proxy pool (B-package archived 2026-08-30):
+    # four categories, equal-weight percentile composite on a quarterly index.
+    # Declared PRIORS, not fitted: percentile_window/trend_quarters anchor the
+    # historical positioning; thresholds are percentile-of-own-history anchors
+    # (composite is a 0..1 percentile), same convention as S2. 景气/杠杆 have
+    # real data this window (PARTIAL out of the four categories); 价格/资金 are
+    # registered Wind-manual/undelivered, reported honestly until they arrive.
+    direction: negative           # rising composite percentile = more fragile
+    percentile_window: 20         # ~5y of quarterly proxy observations
+    trend_quarters: 4             # one-year trend of the composite
+    thresholds:
+      elevated_percentile: 0.80   # own-history percentile: composite fragile
+      moderate_percentile: 0.50

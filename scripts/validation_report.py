@@ -46,6 +46,7 @@ from macro_compass.validation import (  # noqa: E402
     mechanism_scored_share,
 )
 from macro_compass.validation.report import write_all, summary_tables
+from macro_compass.validation.verdict import build_verdicts, verdicts_frame
 
 
 def main() -> None:
@@ -110,6 +111,17 @@ def main() -> None:
         sample.factor_panel, sample.asset_scores, sample.asset_coverage, today,
     )
 
+    # V4.6 Task 10: per-asset empirical verdicts (pure read-only assembly).
+    verdicts = build_verdicts(
+        methods, sample.asset_scores, sample.asset_coverage,
+        assets=list(assets_config["assets"]),
+    )
+    verdict_df = verdicts_frame(verdicts)
+    verdict_csv = paths.LOCAL_DIR / "validation_verdicts.csv"
+    paths.LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    verdict_df.to_csv(verdict_csv, index=False, encoding="utf-8-sig")
+    written += ["data/local/validation_verdicts.csv"]
+
     method_table, lomo_table, regime_table = summary_tables(
         methods, lomo, regime, coverage
     )
@@ -137,6 +149,9 @@ def main() -> None:
     print("\n--- R2 regime/structural checks ---")
     for row in regime_table.to_dict("records"):
         print(f"  {row['check']}: {row['conclusion']}  (n={row['n']})  {row['detail']}")
+
+    print("\n--- V4.6 per-asset empirical verdicts (task 86; read-only) ---")
+    _print_table(verdict_df)
 
     print("\n--- Coverage matrix (inputs + signal comparable-history start) ---")
     cdf = pd.DataFrame(coverage_matrix_rows(coverage))
@@ -186,8 +201,10 @@ def _print_conclusion(regime, lomo, methods, sample) -> None:
           f"[{lomo_cand}]. Recommendations ONLY - no Core signal is downgraded by "
           f"this window (requires owner approval after backfill validation).")
     print(f"4. REGIME CHECKS: {regime_txt}. Gold real-yield decoupling is "
-          f"DATA_BLOCKED (no real pre-2022 gold/real-yield history); credit "
-          f"funding-sensitivity is INSUFFICIENT_SAMPLE (D1 history too short).")
+          f"DATA_BLOCKED (no real pre-2022 gold/real-yield history); M3 "
+          f"regime-dependence is INSUFFICIENT_SAMPLE (yield series starts "
+          f"2023-05, few yield-down month-ends); credit funding-sensitivity "
+          f"is INSUFFICIENT_SAMPLE (D1 history too short).")
     print(f"5. NEXT: Wind one-shot backfill (see backfill gaps) - TSF/gov-bond "
           f"financing, PMI orders/input-price, property, core CPI, policy rate "
           f"history, USD_BROAD, real gold+pre-2022 real yield - then re-run this "
