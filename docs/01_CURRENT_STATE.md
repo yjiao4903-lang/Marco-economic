@@ -3,12 +3,11 @@
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
 **最后人工确认基线：** 2026-08-30（v0.4d）  
-**Current Version:** V1.6A Market Confirmation（v0.4d；V0–V1.5D、v0.4c 全部冻结）  
+**Current Version:** V2 Asset Compass（v0.5；V0–V1.6A 全部冻结）  
 **当前阶段：** Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等用户 Wind 回填、
-X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据，
-Market Data Matrix 见下）。G0 已完成：G3 活源切换为 NBS 增速序列（OECD 保留 fallback）。
-Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带；G0 切换后 growth 由
-−0.399 → −0.357，Regime 分类不变）。资产评分（V2）、Dashboard（V3）尚未开发。
+X2 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
+**V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）。
+Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。Dashboard（V3）尚未开发。  
 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，
 且默认不进入生产计算。
 
@@ -211,6 +210,49 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
   6M +7.4% 处 250 日 100 分位——市场未确认基本面走弱）；M1-M4 MIXED（宏观中性或市场无方向）。
 
 
+### V2 Asset Compass（v0.5）— DONE（2026-08-30，Window E）
+
+**前置 Gate**：① Economic Coverage Gate 负责人豁免开放（不阻塞）；② V1.6A PASS；③ R2 先验矩阵
+调研归档 `docs/research/2026-08-30_R2_asset_prior_matrix.md`。
+
+**资产层交付**：
+- `config/assets.yaml`：7 资产池 × 15 Core Signal 先验矩阵转写。头部注释逐条执行 R2→config 5 条
+  硬约束（broker 胜率仅支撑 tier、超额流动性按系统 D3 定义、符号约定显式、ambiguous 权重 0、
+  两条 V2.5 待检验项声明）。因子 beta = 该因子各信号(sign×tier-weight)带符号之和；tier_weights
+  {HIGH 1.0/MEDIUM 0.6/LOW 0.3} 为声明先验（非拟合、非 broker 数值）。派生 beta 已由
+  `tests/test_asset_compass.py::test_config_derives_expected_betas` 锁定为回归测试。
+- `src/macro_compass/assets/{config,engine}.py`：纯函数引擎。**AssetScore = Σ(βnormalized ×
+  factor.score)**，βnormalized 按资产 Σ|β| L1 归一化 → score∈[−1,1]，与因子量纲对齐。
+  View=顺风/逆风/中性（阈值 0.15），无任何 BUY/SELL/仓位字样。输出契约 8 字段齐备
+  （Score/View/1M/3M change/Factor contribution/Signal contribution/Market confirmation/
+  Confidence）；1M/3M change 通过只读复用冻结 `macro.factors.compute_factor` 在
+  today−30d/−90d 截断帧重建因子分数，一次预计算供 7 资产共享。
+- **全链路可追溯**：Asset→Factor→Signal→series→provider 完整保留在每个输出上。
+- **隔离证明**（源码级 + 行为级测试，同 V1.6A 范式）：
+  `tests/test_asset_compass.py::test_engine_never_imports_market_and_no_weight_search` 断言
+  assets 包不 import market 且无 fit/optimize/lstsq 等权重搜索；行为级测试断言计算资产层后
+  factor 结果与输入计算帧逐位不变；`test_market_confirmation_is_parallel_not_scored` 断言
+  市场确认并列展示且不影响 Asset Score。
+- **ambiguous 项权重 0**（R2 规则 4）：CN_CREDIT G1/G2/G3 与 D2、CN_GOV_BOND I3、GOLD D2，
+  由测试锁定；引擎内 signal 分摊仅在资产激活（非零权重）信号之间进行，ambiguous 信号贡献恒 0。
+- `scripts/asset_report.py`：7 资产 Score/View/1M/3M/逐因子与逐信号贡献/确认/置信快照，
+  写 `data/local/asset_scores.csv`；同 as-of 可与 macro_report/market_report 对齐。
+- **当前真实快照（2026-08-30）**：7 资产全部 READY，评分均处 中性 区间（|score|<0.15）：
+  GOLD +0.139（最高，domestic 流动性 + growth 下行支撑）、CN_GOV_BOND +0.097、CNY −0.094、
+  HK_EQUITY −0.091、INDUSTRIAL_COMMODITY −0.086、CN_EQUITY −0.080、CN_CREDIT −0.058。
+  Market confirmation 并列：M6 商品 NEGATIVE_MACRO_DIVERGENCE、CNY CONFIRMED_POSITIVE、
+  M1-M4 MIXED、GOLD 无对应市场信号（n/a）。
+
+**R2 转写对照**（config 头部注释 + 本行对照）：每资产每信号 sign/tier 均标注 R2 §出处；
+与 R2 摘要矩阵一致，唯一口径调整是按 R2 规则 2/批注 3 明确"超额流动性"以系统 D3 为准。
+
+**V2.5 待检验项（本窗口声明，不在资产层"修平"）**：
+1. 黄金对美债 10Y 实际利率 2022-2024 脱钩（央行购金）——GOLD X1 已标 `v25_pending`；
+2. 信用债对资金面高敏感（理财赎回负反馈）——CN_CREDIT D1 已标 `v25_pending`；
+3. ambiguous 零权单元格（CN_CREDIT G1-G3/D2、CN_GOV_BOND I3、GOLD D2）留待 V2.5
+   leave-one-check 检验是否应赋符号。
+
+
 ### V1.5B Signal Engine + V1.5C Macro Factor Engine — DONE（2026-08-29，Window C）
 - `src/macro_compass/signals/engine.py`（V1.5B）：纯函数信号计算。读 registry 声明 +
   canonical 输入序列，输出 ARCHITECTURE §8 十列契约
@@ -334,26 +376,32 @@ python -m pytest -m network
   - M4 利差口径：中债中票AAA 3Y − 国债 3Y（historyQuery 同源派生）；
     M6 口径：LME 3M 铜（无换月跳空）；改变口径须负责人批准
 
+- V2 Asset Compass 冻结（后续只扩展不重写）：
+  - `config/assets.yaml` 的 7 资产 × 15 信号先验矩阵（sign/tier/tier_weights/beta_range/
+    market_signal/defaults）——R2 转写与 5 条硬约束；改符号/权重须负责人批
+  - `assets/engine.py` 的计分口径：AssetScore = Σ βnormalized × factor.score（只读 factor/
+    market 输出）、β L1 归一化到 [−1,1]、View=顺风/逆风/中性、1M/3M change 截断重建、
+    市场确认为并列观察（不入评分）、Confidence 三分量数据质量语义
+  - 资产层单向隔离：只读 macro/market 输出，无任何 Asset→Factor/Market 反向流；
+    不 import market 包；不改 freeze 的 V1–V1.6A
+
 ## 6. 当前未开发
 
 - Structural Risk 引擎（V2.6；registry 中已占位）
-- Asset Compass / Historical Validation / Streamlit Dashboard / Cloud Mirror
+- Historical Validation（V2.5）/ Streamlit Dashboard（V3）/ Cloud Mirror（V4）
 
 ## 7. 下一任务
 
-> **V2 Asset Compass（已开窗，2026-08-30）**：见 docs/tasks/55_V2_ASSET_COMPASS.md。
-> 前置 Gate 状态（协调员 2026-08-30 更新）：
-> ① Economic Coverage Gate **负责人豁免开放**（D2/D4 的 wind_backfill_tsf.csv、X2 的 FRED
->    补历史均标记**后补**——开发不阻塞，数据就绪后一次导入即转 READY；
->    B 包外部调研（66 号，V2.6 前置）同样标记后补）；
-> ② V1.6A Market Confirmation PASS（已由协调员验收，tag v0.4d-market-confirmation）；
-> ③ R2 资产先验矩阵转写（调研已归档 docs/research/2026-08-30_R2_asset_prior_matrix.md）。
-> V1.6A 交付内容冻结，不要在 V2 窗口改动 market 层口径。后补数据不得以 synthetic
-> 冒充真实进 production（沿用 V1.5D 隔离，缺口以 WARMUP/PARTIAL 显式保留）。
+> **V2.5 Historical Validation（已开窗？见 60 号任务书）**：负责人明确 V2 之后立即 V2.5，
+> 不做 UI，防"看起来合理=有效"认知偏差。60 号任务书开工前须补全，须含负责人新增的
+> Information Increment / Leave-One-Mechanism-Out 要求，并纳入 V2 交付报告的三条
+> V2.5 待检验项（黄金脱钩、信用债资金面敏感、ambiguous 零权单元格）。
 >
-> **协调职责（2026-08-30 起）**：D1 交付后的验收、后续任务书起草与外部调研管理
-> 由新协调员窗口接手，工作手册见 **docs/COORDINATOR_HANDOFF.md**（含 D1 验收
-> 程序、待办队列、55 号任务书素材与红线清单）。
+> **V2 交付对接**：V2 Asset Compass（v0.5）已完成（建议 tag `v0.5-asset-compass`，
+> 由协调员在验收后打标，见第 8 节）。R2 先验矩阵转写对照与两条 V2.5 待检验项声明见第 1 节 V2 小节。
+>
+> **协调职责延续（2026-08-30 起）**：工作手册见 **docs/COORDINATOR_HANDOFF.md**
+> （含验收程序、待办队列、后续任务书素材与红线清单）。
 
 ## 8. 窗口交接记录（2026-08-30 V1.6A / v0.4d，Window D1）
 
@@ -374,6 +422,19 @@ Modified Files: 新增 src/macro_compass/market/{__init__,config,engine}.py、
   config/data_sources.yaml（eastmoney provider + 市场序列路由 + chinabond/初始窗口）、
   config/macro.yaml（G3 scale 单位换算、EASTMONEY 评级）、
   tests/test_signal_registry.py（G3 可用性断言随授权变更更新）、README
+```
+
+### 窗口交接记录（2026-08-30 V2 Asset Compass / v0.5，Window E）
+
+```text
+Last Test Result: PASS（python -m pytest，2026-08-30）
+Last Test Count: 205 passed, 0 failed（192 基线 + 13：V2 资产层 config/引擎/隔离/转写 13）
+Last Git Tag: 建议 v0.5-asset-compass（未打标，交由协调员验收后处理）
+Known Issues: 见第 10 节（V2 新增局限见下）
+Frozen 检查：V1/V1.2/V1.3/V1.5/V0.4c/V1.6A frozen components 未被重写（仅 paths.py 增 2 行常量）
+Modified Files: 新增 config/assets.yaml、src/macro_compass/assets/{__init__,config,engine}.py、
+  scripts/asset_report.py、tests/test_asset_compass.py；修改 src/macro_compass/paths.py、
+  docs/01_CURRENT_STATE.md、README.md
 ```
 
 ## 9. 每次窗口结束必须更新
@@ -418,6 +479,20 @@ Modified Files: 新增 src/macro_compass/market/{__init__,config,engine}.py、
   parity 回填已按年分段+休眠，日常增量窗口小、风险可控。
 - **Divergence 阈值未经历史检验**：market.yaml 的 trend_6m/macro_score 阈值是声明先验
   （V2.5 Historical Validation 才允许回测），当前只保证语义可解释、可追溯。
+
+### V2 Asset Compass 局限与未决项（2026-08-30，如实记录）
+
+- **因子 score 为宏观层整体值**：资产 Score = Σ β_normalized × factor.score，factor.score 由
+  该因子全部 Core Signal（宏观权重）算出；资产的 signal 级贡献按"激活信号集"重分 apportion，
+  因此 CN_CREDIT 等将部分 growth 信号标为 ambiguous（权重 0）的资产，其 growth 贡献会被
+  摊到剩余激活信号（G4/G5）上——语义上"该因子增长贡献归因于 G4/G5"，非 G1-G3 传导，已注释。
+- **1M/3M change 依赖 frame 历史长度**：通过截断帧重建因子分数；若信号历史不足
+  （WARMUP 如 D2/D4/X2），其因子在该 horizon 分数为 None，change 相应缺失。
+- **View 全为中性**：当前真实宏观环境（Regime TRANSITION）下 7 资产 |score|<0.15 全部中性；
+  属当前环境的如实输出，非缺陷；阈值 0.15 为声明先验，V2.5 前不改。
+- **市场确认非 1:1**：GOLD 无对应 M 信号，market_signal=null（n/a）；其余按 8 字段并列展示。
+- **V2.5 待检验**（见第 1 节 V2 小节 + config/assets.yaml `v25_pending`）：黄金实际利率脱钩、
+  信用债资金面高敏感、ambiguous 零权单元格是否应赋符号。
 
 ### 其他（沿袭）
 

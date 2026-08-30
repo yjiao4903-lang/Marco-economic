@@ -1,0 +1,352 @@
+# V2 Asset Compass configuration - the R2 prior matrix transcription.
+#
+# PURPOSE: maps the 7-asset pool x 15 Core Fundamental Signal prior matrix
+# (sign + importance tier) from docs/research/2026-08-30_R2_asset_prior_matrix.md
+# into per-asset factor betas, then scores each asset from the Macro Factor
+# Engine's factor OUTPUTS (macro/factors.py). This file is the single declared
+# surface for the Asset Layer - every sign/tier/beta here is a DECLARED PRIOR,
+# never fitted and never searched (MASTER SPEC section 2/11; ARCHITECTURE
+# section 11; V2 task spec 55 section "R2 -> config 转写规则").
+#
+# =============================================================================
+# R2 -> config TRANSCRIPTION RULES (hard constraints; checked at acceptance):
+# =============================================================================
+# 1. BROKER win-rates / correlation coefficients in the R2 report support ONLY
+#    the importance TIER (HIGH/MEDIUM/LOW); they are NEVER used as numeric
+#    weight evidence (R2 header note 2). Numeric weights come ONLY from the R2
+#    prior intervals - transcribed here as the signed tier-weight sums
+#    (tier_weights below are the declared prior sensitivity scheme). Nothing
+#    here is derived from a broker "胜率/correlation" number.
+# 2. "超额流动性" maps to the SYSTEM'S D3 DEFINITION
+#    (D3 = M2 YoY - private TSF YoY; 00_MASTER_SPEC section 5). The R2 report's
+#    "超额流动性" is the M2 - nominal GDP probe (R2 header note 3): same-direction
+#    mechanism but NOT the same indicator, so this matrix does NOT reuse R2's
+#    numeric language for it - it keys off the live D3 signal only.
+# 3. SIGN CONVENTION is written into this file (never implicit):
+#    - 利率债 / 信用债: "+" = price UP / yield DOWN (falling yield = +).
+#    - CNY:             "+" = RMB appreciation (USD/CNY DOWN).
+#    - 权益 / 商品 / 黄金: "+" = price UP.
+# 4. R2 items marked `ambiguous` are forced to weight 0 and flagged `zeroed:
+#    ambiguous` - a sign is never imposed (R2 header note 5). Known set is
+#    transcribed inline (CN_CREDIT vs CLI/PMI/hard-activity, CN_CREDIT vs
+#    private credit impulse, CN_GOV_BOND vs cost pressure, GOLD vs private
+#    credit impulse, etc.).
+# 5. Two regime/structural findings are flagged as V2.5 pending checks and are
+#    NOT "flattened" or hidden here: (a) GOLD's 2022-2024 decoupling from US
+#    10Y real yield (central-bank gold buying); (b) CN_CREDIT's high
+#    sensitivity to funding conditions (wealth-product redemption negative
+#    feedback). Both are carried as `v25_pending` markers in this file and must
+#    be carried into the V2 delivery report.
+# =============================================================================
+#
+# Symbol scheme: sign values are "+" / "-" / "0" (true neutral) / "ambiguous".
+#   "+" and "-" contribute +weight / -weight to the factor beta;
+#   "ambiguous" and "0" contribute 0 (zeroed / neutral).
+# Factor beta = sum over that factor's signals of (tier_weight x sign_value),
+# a signed aggregate of the R2 importance tiers. The engine divides every
+# factor beta by the asset's total |beta| (L1 normalisation) so the asset
+# score lands in [-1, 1], interpretable like a factor score.
+
+version: 1
+
+# Declared prior sensitivity scheme: tier -> numeric weight. HIGH/MEDIUM/LOW
+# are the R2 importance tiers; the numbers are a declared prior for how much a
+# tier counts toward an asset's factor beta - NOT fitted, NOT broker-derived.
+tier_weights:
+  HIGH: 1.0
+  MEDIUM: 0.6
+  LOW: 0.3
+
+# Global scoring parameters (declared priors).
+defaults:
+  view_threshold: 0.15     # |asset score| beyond = tailwind/headwind, else neutral
+  change_window_days:
+    change_1m: 30          # "1M change" = asset score today minus score ~1M ago
+    change_3m: 90          # "3M change" = asset score today minus score ~3M ago
+  min_scored_factors: 1    # an asset needs at least this many scored factors
+                           # to produce a Score (else WARMUP)
+  source_quality:
+    default_source_quality: 0.5
+
+# Per-asset prior matrix. Each asset lists its FOUR factor blocks in the
+# project's core-factor order (growth/inflation/domestic_financial/
+# global_financial); inside each factor, every 15-signal mapping declares
+# sign + tier with an R2 cross-reference. `beta` below each factor header is a
+# comment computing the signed tier-weight sum (single source of truth is the
+# `signals:` block; the loader derives beta and validates it).
+
+assets:
+  # ----------------------------------------------------------------------
+  # CN_EQUITY (A股) - MASTER SPEC/00 §8; R2 §2.1
+  # ----------------------------------------------------------------------
+  CN_EQUITY:
+    name: "A股"
+    market_signal: M1                   # # confirmation observation only, never scored
+    factors:
+      growth:                           # beta (derived) = +3.8
+        beta_range: {low: 2.8, high: 4.8}
+        signals:
+          G1: {sign: "+", tier: HIGH,    ref: "R2 §2.1.1"}
+          G2: {sign: "+", tier: HIGH,    ref: "R2 §2.1.2"}
+          G3: {sign: "+", tier: MEDIUM,  ref: "R2 §2.1.3"}
+          G4: {sign: "+", tier: MEDIUM,  ref: "R2 §2.1.4"}
+          G5: {sign: "+", tier: MEDIUM,  ref: "R2 §2.1.5"}
+      inflation:                        # beta (derived) = +1.4
+        beta_range: {low: 1.0, high: 1.8}
+        signals:
+          I1: {sign: "+", tier: HIGH,    ref: "R2 §2.1.6"}
+          I2: {sign: "+", tier: HIGH,    ref: "R2 §2.1.7"}
+          I3: {sign: "-", tier: MEDIUM,  ref: "R2 §2.1.8"}
+      domestic_financial:               # beta (derived) = +2.0
+        beta_range: {low: 1.5, high: 2.5}
+        signals:
+          D1: {sign: "-", tier: HIGH,    ref: "R2 §2.1.9"}
+          D2: {sign: "+", tier: HIGH,    ref: "R2 §2.1.10"}
+          D3: {sign: "+", tier: HIGH,    ref: "R2 §2.1.11"}
+          D4: {sign: "+", tier: HIGH,    ref: "R2 §2.1.12"}
+      global_financial:                 # beta (derived) = -2.6
+        beta_range: {low: -3.2, high: -2.0}
+        signals:
+          X1: {sign: "-", tier: HIGH,    ref: "R2 §2.1.13"}
+          X2: {sign: "-", tier: HIGH,    ref: "R2 §2.1.14"}
+          X3: {sign: "-", tier: MEDIUM,  ref: "R2 §2.1.15"}
+
+  # ----------------------------------------------------------------------
+  # HK_EQUITY (港股) - R2 §2.2
+  # ----------------------------------------------------------------------
+  HK_EQUITY:
+    name: "港股"
+    market_signal: M2
+    factors:
+      growth:
+        beta_range: {low: 3.2, high: 5.2}    # beta (derived) = +4.2
+        signals:
+          G1: {sign: "+", tier: HIGH,    ref: "R2 §2.2.1"}
+          G2: {sign: "+", tier: HIGH,    ref: "R2 §2.2.2"}
+          G3: {sign: "+", tier: MEDIUM,  ref: "R2 §2.2.3"}
+          G4: {sign: "+", tier: HIGH,    ref: "R2 §2.2.4"}
+          G5: {sign: "+", tier: MEDIUM,  ref: "R2 §2.2.5"}
+      inflation:
+        beta_range: {low: 1.0, high: 1.8}    # beta (derived) = +1.4
+        signals:
+          I1: {sign: "+", tier: HIGH,    ref: "R2 §2.2.6"}
+          I2: {sign: "+", tier: HIGH,    ref: "R2 §2.2.7"}
+          I3: {sign: "-", tier: MEDIUM,  ref: "R2 §2.2.8"}
+      domestic_financial:
+        beta_range: {low: 1.4, high: 2.4}    # beta (derived) = +1.9
+        signals:
+          D1: {sign: "-", tier: LOW,     ref: "R2 §2.2.9"}
+          D2: {sign: "+", tier: HIGH,    ref: "R2 §2.2.10"}
+          D3: {sign: "+", tier: MEDIUM,  ref: "R2 §2.2.11"}
+          D4: {sign: "+", tier: MEDIUM,  ref: "R2 §2.2.12"}
+      global_financial:
+        beta_range: {low: -3.6, high: -2.4}  # beta (derived) = -3.0
+        signals:
+          X1: {sign: "-", tier: HIGH,    ref: "R2 §2.2.13"}
+          X2: {sign: "-", tier: HIGH,    ref: "R2 §2.2.14"}
+          X3: {sign: "-", tier: HIGH,    ref: "R2 §2.2.15"}
+
+  # ----------------------------------------------------------------------
+  # CN_GOV_BOND (利率债) - R2 §2.3
+  # ----------------------------------------------------------------------
+  CN_GOV_BOND:
+    name: "利率债"
+    market_signal: M3
+    factors:
+      growth:
+        beta_range: {low: -5.2, high: -3.2}  # beta (derived) = -4.2
+        signals:
+          G1: {sign: "-", tier: MEDIUM,  ref: "R2 §2.3.1"}
+          G2: {sign: "-", tier: HIGH,    ref: "R2 §2.3.2"}
+          G3: {sign: "-", tier: HIGH,    ref: "R2 §2.3.3"}
+          G4: {sign: "-", tier: HIGH,    ref: "R2 §2.3.4"}
+          G5: {sign: "-", tier: MEDIUM,  ref: "R2 §2.3.5"}
+      inflation:
+        beta_range: {low: -1.6, high: -1.0}  # beta (derived) = -1.3 (I3 zeroed)
+        signals:
+          I1: {sign: "-", tier: LOW,     ref: "R2 §2.3.6"}
+          I2: {sign: "-", tier: HIGH,    ref: "R2 §2.3.7"}
+          I3: {sign: "ambiguous", tier: MEDIUM, ref: "R2 §2.3.8",
+               zeroed: "ambiguous", note: "cost push vs demand destruction two-way"}
+      domestic_financial:
+        beta_range: {low: -2.5, high: -1.5}  # beta (derived) = -2.0
+        signals:
+          D1: {sign: "-", tier: HIGH,    ref: "R2 §2.3.9"}
+          D2: {sign: "-", tier: HIGH,    ref: "R2 §2.3.10"}
+          D3: {sign: "+", tier: HIGH,    ref: "R2 §2.3.11"}
+          D4: {sign: "-", tier: HIGH,    ref: "R2 §2.3.12"}
+      global_financial:
+        beta_range: {low: -1.9, high: -1.1}  # beta (derived) = -1.5
+        signals:
+          X1: {sign: "-", tier: MEDIUM,  ref: "R2 §2.3.13"}
+          X2: {sign: "-", tier: MEDIUM,  ref: "R2 §2.3.14"}
+          X3: {sign: "-", tier: LOW,     ref: "R2 §2.3.15"}
+
+  # ----------------------------------------------------------------------
+  # CN_CREDIT (信用债) - R2 §2.4
+  # ----------------------------------------------------------------------
+  CN_CREDIT:
+    name: "信用债"
+    market_signal: M4
+    factors:
+      growth:
+        beta_range: {low: -0.5, high: 2.0}   # beta (derived) = +1.3 (G1-G3 zeroed)
+        signals:
+          G1: {sign: "ambiguous", tier: MEDIUM, ref: "R2 §2.4.1",
+               zeroed: "ambiguous", note: "two-way: default risk + vs rate up/redemption -"}
+          G2: {sign: "ambiguous", tier: MEDIUM, ref: "R2 §2.4.2", zeroed: "ambiguous"}
+          G3: {sign: "ambiguous", tier: MEDIUM, ref: "R2 §2.4.3", zeroed: "ambiguous"}
+          G4: {sign: "+", tier: HIGH,    ref: "R2 §2.4.4"}
+          G5: {sign: "+", tier: LOW,     ref: "R2 §2.4.5"}
+      inflation:
+        beta_range: {low: -0.5, high: 1.5}   # beta (derived) = +0.3 (I1 zeroed)
+        signals:
+          I1: {sign: "0", tier: LOW,     ref: "R2 §2.4.6",
+               zeroed: "neutral", note: "onshore credit immune to core CPI"}
+          I2: {sign: "+", tier: MEDIUM,  ref: "R2 §2.4.7"}
+          I3: {sign: "-", tier: LOW,     ref: "R2 §2.4.8"}
+      domestic_financial:
+        beta_range: {low: 0.0, high: 2.5}    # beta (derived) = +1.0 (D2 zeroed)
+        signals:
+          D1: {sign: "-", tier: HIGH,    ref: "R2 §2.4.9",
+               v25_pending: "wealth-product redemption negative feedback (2022)",
+               note: "credit's vital funding pulse"}
+          D2: {sign: "ambiguous", tier: MEDIUM, ref: "R2 §2.4.10",
+               zeroed: "ambiguous", note: "credit impulse two-way; debt-replacement is credit positive"}
+          D3: {sign: "+", tier: HIGH,    ref: "R2 §2.4.11"}
+          D4: {sign: "+", tier: HIGH,    ref: "R2 §2.4.12"}
+      global_financial:
+        beta_range: {low: -0.5, high: 0.5}   # beta (derived) = 0.0 (all zeroed)
+        signals:
+          X1: {sign: "0", tier: LOW,     ref: "R2 §2.4.13",
+               zeroed: "neutral", note: "onshore closed loop"}
+          X2: {sign: "0", tier: LOW,     ref: "R2 §2.4.14", zeroed: "neutral"}
+          X3: {sign: "0", tier: LOW,     ref: "R2 §2.4.15", zeroed: "neutral"}
+
+  # ----------------------------------------------------------------------
+  # GOLD (黄金) - R2 §2.5
+  # ----------------------------------------------------------------------
+  GOLD:
+    name: "黄金"
+    market_signal: null                  # no dedicated confirmation signal in M1-M6
+    factors:
+      growth:
+        beta_range: {low: -3.0, high: -1.8}  # beta (derived) = -2.4
+        signals:
+          G1: {sign: "-", tier: MEDIUM,  ref: "R2 §2.5.1"}
+          G2: {sign: "-", tier: MEDIUM,  ref: "R2 §2.5.2"}
+          G3: {sign: "-", tier: LOW,     ref: "R2 §2.5.3"}
+          G4: {sign: "-", tier: LOW,     ref: "R2 §2.5.4",
+               note: "global negative; onshore RMB gold is the exception (+)"}
+          G5: {sign: "-", tier: MEDIUM,  ref: "R2 §2.5.5"}
+      inflation:
+        beta_range: {low: 1.6, high: 2.8}    # beta (derived) = +2.2
+        signals:
+          I1: {sign: "+", tier: HIGH,    ref: "R2 §2.5.6"}
+          I2: {sign: "+", tier: MEDIUM,  ref: "R2 §2.5.7"}
+          I3: {sign: "+", tier: MEDIUM,  ref: "R2 §2.5.8"}
+      domestic_financial:
+        beta_range: {low: 0.8, high: 1.8}    # beta (derived) = +1.3 (D2 zeroed)
+        signals:
+          D1: {sign: "-", tier: LOW,     ref: "R2 §2.5.9",
+               note: "onshore slight negative; offshore 0"}
+          D2: {sign: "ambiguous", tier: LOW, ref: "R2 §2.5.10",
+               zeroed: "ambiguous", note: "credit expansion vs money-printing dilution"}
+          D3: {sign: "+", tier: HIGH,    ref: "R2 §2.5.11"}
+          D4: {sign: "+", tier: MEDIUM,  ref: "R2 §2.5.12"}
+      global_financial:
+        beta_range: {low: -3.2, high: -2.0}  # beta (derived) = -2.6
+        signals:
+          X1: {sign: "-", tier: HIGH,    ref: "R2 §2.5.13",
+               v25_pending: "2022-2024 decoupling from US 10Y real yield (central-bank buying)",
+               note: "traditional core anchor; regime break documented, V2.5 check"}
+          X2: {sign: "-", tier: HIGH,    ref: "R2 §2.5.14",
+               note: "onshore RMB gold hedges via USD/CNY appreciation"}
+          X3: {sign: "-", tier: MEDIUM,  ref: "R2 §2.5.15"}
+
+  # ----------------------------------------------------------------------
+  # INDUSTRIAL_COMMODITY (工业商品) - R2 §2.6
+  # ----------------------------------------------------------------------
+  INDUSTRIAL_COMMODITY:
+    name: "工业商品"
+    market_signal: M6
+    factors:
+      growth:
+        beta_range: {low: 4.0, high: 6.0}    # beta (derived) = +5.0
+        signals:
+          G1: {sign: "+", tier: HIGH,    ref: "R2 §2.6.1"}
+          G2: {sign: "+", tier: HIGH,    ref: "R2 §2.6.2"}
+          G3: {sign: "+", tier: HIGH,    ref: "R2 §2.6.3"}
+          G4: {sign: "+", tier: HIGH,    ref: "R2 §2.6.4"}
+          G5: {sign: "+", tier: HIGH,    ref: "R2 §2.6.5"}
+      inflation:
+        beta_range: {low: 2.0, high: 3.2}    # beta (derived) = +2.6
+        signals:
+          I1: {sign: "+", tier: MEDIUM,  ref: "R2 §2.6.6"}
+          I2: {sign: "+", tier: HIGH,    ref: "R2 §2.6.7"}
+          I3: {sign: "+", tier: HIGH,    ref: "R2 §2.6.8"}
+      domestic_financial:
+        beta_range: {low: 1.8, high: 3.0}    # beta (derived) = +2.4
+        signals:
+          D1: {sign: "-", tier: MEDIUM,  ref: "R2 §2.6.9"}
+          D2: {sign: "+", tier: HIGH,    ref: "R2 §2.6.10"}
+          D3: {sign: "+", tier: HIGH,    ref: "R2 §2.6.11"}
+          D4: {sign: "+", tier: HIGH,    ref: "R2 §2.6.12"}
+      global_financial:
+        beta_range: {low: -3.6, high: -2.4}  # beta (derived) = -3.0
+        signals:
+          X1: {sign: "-", tier: HIGH,    ref: "R2 §2.6.13"}
+          X2: {sign: "-", tier: HIGH,    ref: "R2 §2.6.14"}
+          X3: {sign: "-", tier: HIGH,    ref: "R2 §2.6.15"}
+
+  # ----------------------------------------------------------------------
+  # CNY (人民币汇率; "+" = appreciation, USD/CNY down) - R2 §2.7
+  # ----------------------------------------------------------------------
+  CNY:
+    name: "人民币汇率"
+    market_signal: M5
+    factors:
+      growth:
+        beta_range: {low: 3.2, high: 5.2}    # beta (derived) = +4.2
+        signals:
+          G1: {sign: "+", tier: MEDIUM,  ref: "R2 §2.7.1"}
+          G2: {sign: "+", tier: HIGH,    ref: "R2 §2.7.2"}
+          G3: {sign: "+", tier: HIGH,    ref: "R2 §2.7.3"}
+          G4: {sign: "+", tier: MEDIUM,  ref: "R2 §2.7.4"}
+          G5: {sign: "+", tier: HIGH,    ref: "R2 §2.7.5"}
+      inflation:
+        beta_range: {low: 0.5, high: 1.5}    # beta (derived) = +0.9
+        signals:
+          I1: {sign: "+", tier: MEDIUM,  ref: "R2 §2.7.6"}
+          I2: {sign: "+", tier: MEDIUM,  ref: "R2 §2.7.7"}
+          I3: {sign: "-", tier: LOW,     ref: "R2 §2.7.8"}
+      domestic_financial:
+        beta_range: {low: 1.5, high: 2.5}    # beta (derived) = +2.0
+        signals:
+          D1: {sign: "+", tier: HIGH,    ref: "R2 §2.7.9"}
+          D2: {sign: "+", tier: HIGH,    ref: "R2 §2.7.10"}
+          D3: {sign: "-", tier: MEDIUM,  ref: "R2 §2.7.11",
+               note: "monetarist: fast M2 erodes the exchange rate"}
+          D4: {sign: "+", tier: MEDIUM,  ref: "R2 §2.7.12"}
+      global_financial:
+        beta_range: {low: -3.2, high: -2.0}  # beta (derived) = -2.6
+        signals:
+          X1: {sign: "-", tier: HIGH,    ref: "R2 §2.7.13"}
+          X2: {sign: "-", tier: HIGH,    ref: "R2 §2.7.14"}
+          X3: {sign: "-", tier: MEDIUM,  ref: "R2 §2.7.15"}
+
+# ---------------------------------------------------------------------------
+# V2.5 PENDING CHECKS (carried from this file, declared again in the delivery
+# report - never "smoothed" / hidden here):
+#   [1] GOLD X1: 2022-2024 decoupling from the US 10Y real-yield model
+#       (central-bank gold buying, sovereign-debt de-trust, onshore premium).
+#   [2] CN_CREDIT D1: extreme funding-sensitivity - the 2022 wealth-product
+#       redemption negative feedback (DR007-OMO spread shocks => 100bp+
+#       credit-spread widening).
+#   [3] CN_CREDIT G1-G3 / D2 and CN_GOV_BOND I3 / GOLD D2 ambiguous cells:
+#       zeroed by rule 4; a dedicated V2.5 leave-one-check should test whether
+#       any deserves a sign.
+v25_pending:
+  - "GOLD X1: real-yield decoupling (central-bank gold)"
+  - "CN_CREDIT D1: funding-sensitivity / redemption negative feedback"
+  - "zeroed ambiguous cells (CN_CREDIT G1-G3,D2; CN_GOV_BOND I3; GOLD D2)"

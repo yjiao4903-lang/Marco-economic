@@ -3,16 +3,16 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V1.6A Market Confirmation（v0.4d）**（V0–V1.5D、v0.4c 全部冻结）。
+> 当前开发阶段：**V2 Asset Compass（v0.5）**（V0–V1.6A、v0.4d 全部冻结）。
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
 > Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等待 Wind 回填、X2 等 FRED 网络恢复）；
-> **Market Confirmation 6/6 real READY**（M1-M6 全部真实数据，
-> `python scripts/market_report.py` 输出 Market Data Matrix + 五状态 divergence 快照；
-> 与 Fundamental 层单向隔离，永不反向修改基本面分数，也不输出买卖信号）。
-> G3 已按负责人批准切换为 NBS 增速活源（OECD 保留 fallback）。
-> Regime = TRANSITION。资产评分（V2）、Dashboard（V3）尚未开发。
+> **Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
+> **V2 Asset Compass 7/7 real READY**（`python scripts/asset_report.py` 输出 7 资产
+> Score/View/1M/3M/逐因子与逐信号贡献/市场确认/置信快照；资产层只读 factor+market 输出，
+> 无反向流；View 仅顺风/逆风/中性，无买卖/仓位字样）。
+> Regime = TRANSITION。资产评分（V2）已完成，Dashboard（V3）尚未开发。
 > 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，且默认不进入生产计算。
 
 ## 目录结构
@@ -101,6 +101,10 @@ python scripts/overlap_check.py --series US_REAL_YIELD_10Y --left treasury --rig
 python scripts/market_report.py                  # 写 data/local/market_confirmation.csv
 python scripts/market_report.py --today 2026-08-01
 
+# V2 Asset Compass 快照：7 资产 Score/View/1M/3M + 逐因子/逐信号贡献 + 市场确认 + 置信
+python scripts/asset_report.py                   # 写 data/local/asset_scores.csv
+python scripts/asset_report.py --today 2026-08-01
+
 # 测试（network 集成测试默认跳过，-m network 单独运行）
 python -m pytest
 python -m pytest -m network
@@ -124,4 +128,4 @@ python -m pytest -m network
 - 原始文件 append-only，sha256 去重，同一文件不会重复写数据。
 - Parquet 是真源，DuckDB 是缓存，删除后可用 `rebuild_db.py` 完全重建。
 - 所有指标、映射、阈值配置化，不硬编码。
-- Asset Score ≠ 预期收益 ≠ 交易信号（后续版本）。
+- Asset Score = 当前宏观环境对该资产的顺风/逆风程度，≠ 预期收益 ≠ 交易信号 ≠ 仓位建议（V2 已实现）
