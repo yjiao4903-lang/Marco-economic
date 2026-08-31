@@ -1,0 +1,76 @@
+import fs from 'node:fs/promises';
+import { Workbook, SpreadsheetFile } from '@oai/artifact-tool';
+
+const outDir = 'D:/宏观监控体系/outputs/wind_data_request_20260830';
+await fs.mkdir(outDir, { recursive: true });
+const wb = Workbook.create();
+const guide = wb.worksheets.add('使用说明');
+const pull = wb.worksheets.add('拉取清单');
+const panel = wb.worksheets.add('S3面板规范');
+const tmpl = wb.worksheets.add('导出模板');
+const qc = wb.worksheets.add('验收检查');
+const red = wb.worksheets.add('禁止替代与红线');
+for (const s of [guide,pull,panel,tmpl,qc,red]) s.showGridLines = false;
+
+const C = { navy:'#17365D', blue:'#1F4E78', teal:'#0F6B78', lightBlue:'#D9EAF7', pale:'#F7FAFC', yellow:'#FFF2CC', green:'#E2F0D9', red:'#FCE4D6', gray:'#E7E6E6', dark:'#243447', white:'#FFFFFF', blueText:'#0563C1' };
+function title(s, range, text) { s.getRange(range).merge(); s.getRange(range.split(':')[0]).values=[[text]]; s.getRange(range).format={fill:C.navy,font:{bold:true,color:C.white,size:16},horizontalAlignment:'left',verticalAlignment:'center'}; s.getRange(range).format.rowHeight=30; }
+function section(s, range, text) { s.getRange(range).merge(); s.getRange(range.split(':')[0]).values=[[text]]; s.getRange(range).format={fill:C.blue,font:{bold:true,color:C.white,size:11},verticalAlignment:'center'}; s.getRange(range).format.rowHeight=22; }
+function head(s, range) { s.getRange(range).format={fill:C.lightBlue,font:{bold:true,color:C.dark},wrapText:true,verticalAlignment:'center',horizontalAlignment:'center',borders:{preset:'all',style:'thin',color:'#B7C9D6'}}; s.getRange(range).format.rowHeight=32; }
+function body(s, range) { s.getRange(range).format={fill:C.pale,wrapText:true,verticalAlignment:'top',borders:{preset:'all',style:'thin',color:'#D9E2F3'}}; }
+function edit(s, range) { s.getRange(range).format={fill:C.yellow,font:{color:C.blueText},wrapText:true,verticalAlignment:'top'}; }
+function widths(s, map) { for (const [col,w] of Object.entries(map)) s.getRange(`${col}:${col}`).format.columnWidth=w; }
+
+title(guide,'A1:H1','Wind 数据拉取与验收清单');
+guide.getRange('A2:H2').merge(); guide.getRange('A2').values=[['as-of=2026-08-30｜本文件是导出说明与验收模板，不代表数据已经验证。所有未确认 Wind code 必须在终端检索后填写，禁止猜测。']];
+guide.getRange('A2:H2').format={fill:C.yellow,font:{bold:true,color:'#7F6000'},wrapText:true,verticalAlignment:'center'}; guide.getRange('A2:H2').format.rowHeight=30;
+section(guide,'A4:H4','目标');
+guide.getRange('A5:H6').merge(); guide.getRange('A5').values=[['为 Wind 终端拉取建立可复核的最小数据集，并保留 series_id、字段、频率、单位、口径、发布日期及真实起止日期等元数据。导出原始文件后放入 data/inbox/wind/，再按“拉取—元数据—验收—入库”闭环处理。']]; guide.getRange('A5:H6').format={fill:C.pale,wrapText:true,verticalAlignment:'top'};
+section(guide,'A8:H8','四步工作流');
+guide.getRange('A9:D13').values=[['步骤','动作','完成标志','输出位置'],['1. 检索','在 Wind 终端按描述检索并确认代码、字段、频率、单位、口径','代码与字段已人工核对','终端记录/截图'],['2. 导出','按模板导出原始数据，保留日期、数值、代码、单位、发布日期等元数据','文件可打开且列完整','data/inbox/wind/'],['3. 验收','逐行填写真实起止日期、单位/口径、重叠校验与状态','验收状态 PASS 或明确 BLOCKED','验收检查'],['4. 入库','仅将通过验收的数据交给后续管线','无红线事项、保留审计线索','data/inbox/wind/']]; head(guide,'A9:D9'); body(guide,'A10:D13');
+section(guide,'F8:H8','颜色 / 状态图例'); guide.getRange('F9:H13').values=[['颜色/状态','含义','使用方式'],['浅黄底 + 蓝字','可编辑单元格','负责人、实际文件名、真实日期、确认项'],['NOT STARTED','尚未开始','默认状态'],['CHECK','待人工核验','资料已导出但验收未完成'],['PASS / BLOCKED','通过 / 阻塞','PASS 才可直接导入；BLOCKED 不得导入']]; head(guide,'F9:H9'); body(guide,'F10:H13');
+section(guide,'A15:H15','禁止事项'); guide.getRange('A16:H18').merge(); guide.getRange('A16').values=[['禁止猜测 Wind code；禁止把 D2/D4 累计值或存量当作当月流量；禁止将 SHTAU 直接作为 GOLD；禁止把未同口径的 X1/X2 并入；禁止把城市面板直接压成全国序列；禁止通过“改 Asset score”绕过 S3 规则。']]; guide.getRange('A16:H18').format={fill:C.red,wrapText:true,verticalAlignment:'top'};
+section(guide,'A20:H20','交付路径'); guide.getRange('A21:H21').merge(); guide.getRange('A21').values=[['data/inbox/wind/（原始导出与元数据）；本工作簿为拉取和验收清单，不是数据文件。']]; guide.getRange('A21:H21').format={fill:C.green,font:{bold:true,color:'#375623'}};
+guide.freezePanes.freezeRows(2); widths(guide,{A:16,B:28,C:25,D:20,E:4,F:18,G:26,H:25});
+
+title(pull,'A1:N1','Wind 拉取清单'); pull.getRange('A2:N2').merge(); pull.getRange('A2').values=[['P0 为必拉最小集；P1 为优先补充。series_id 仅在终端确认后落地；未确认 code 一律填写“待终端检索，禁止猜测”。']]; pull.getRange('A2:N2').format={fill:C.yellow,font:{color:'#7F6000'},wrapText:true};
+const ph=['优先级','series_id','信号用途','Wind 终端检索描述','目标字段','频率','起止日期','单位','口径','当前状态','验收门','可否直接导入','备注/风险','来源/证据'];
+pull.getRange('A4:N4').values=[ph]; head(pull,'A4:N4');
+const rows=[
+['P0','待终端检索，禁止猜测','中国财政流量 / 国债融资压力','D2 / D4：按月、当月新增流量（不要累计/存量）','CN_TSF_TOTAL；CN_GOV_BOND_FINANCING','月度','按项目研究窗口','人民币/亿元（以终端为准）','当月月度流量；真实发布日期','NOT STARTED','必须确认非累计、非存量且为当月流量','否','D2/D4 一组导出；字段定义和单位需逐项留痕','终端检索记录'],
+['P0','待终端检索，禁止猜测','中国财政流量 / 国债融资压力','D2 / D4：按月、当月新增流量（不要累计/存量）','CN_TSF_TOTAL；CN_GOV_BOND_FINANCING','月度','按项目研究窗口','人民币/亿元（以终端为准）','当月月度流量；真实发布日期','NOT STARTED','必须确认非累计、非存量且为当月流量','否','D2/D4 一组导出；字段定义和单位需逐项留痕','终端检索记录'],
+['P0','待终端检索，禁止猜测','美元广义指数 X1 / 美元条件','USD_BROAD；需确认与 DTWEXBGS 同定义','USD_BROAD','日度','至少覆盖研究窗口','指数点','与 DTWEXBGS 同定义后才可并入','NOT STARTED','定义匹配 + 至少 60 个共同交易日 overlap','否','X1 需 >=60 共同交易日；同口径后才能并入','终端检索记录 / DTWEXBGS 对照'],
+['P0','待终端检索，禁止猜测','黄金价格 X2 / 风险对冲','GOLD；美元计价盎司价格','GOLD','日度','至少覆盖研究窗口','USD/troy oz','不得用 SHTAU 直接替代','NOT STARTED','USD/troy oz + 口径确认 + 日期连续性','否','GOLD 必须 USD/troy oz；禁止 SHTAU 直接导入','终端检索记录'],
+['P1','待终端检索，禁止猜测','实际利率 X3 / 金融条件','US_REAL_YIELD_10Y；10Y 实际收益率','US_REAL_YIELD_10Y','日度','至少覆盖研究窗口','%','需确认来源、期限和单位','NOT STARTED','定义、期限、单位与目标序列一致','否','不要用名义 10Y 替代','终端检索记录'],
+['P1','待终端检索，禁止猜测','中国房地产价格 X4 / 价格压力','CN_NEW_HOUSE_PRICE_YOY；70城新建住宅价格同比','CN_NEW_HOUSE_PRICE_YOY','月度','至少覆盖研究窗口','%','城市面板优先；全国序列仅在批准口径后生成','NOT STARTED','城市、日期、同比列齐全；城市池获批准','否','不得直接把面板压成全国序列','终端检索记录'],
+['P1','待终端检索，禁止猜测','房地产资金 X5 / 信用压力','CN_PROPERTY_FUNDING_YOY；房地产开发资金来源累计同比','CN_PROPERTY_FUNDING_YOY','月度','至少覆盖研究窗口','%','必须是资金来源累计同比，保留来源维度','NOT STARTED','来源维度 + 累计同比口径确认','否','不能直接改 Asset score','终端检索记录']
+]; pull.getRange(`A5:N${4+rows.length}`).values=rows; body(pull,`A5:N${4+rows.length}`); edit(pull,`A5:B${4+rows.length}`); pull.getRange(`J5:J${4+rows.length}`).dataValidation={rule:{type:'list',values:['NOT STARTED','CHECK','PASS','BLOCKED']}}; pull.getRange(`A5:A${4+rows.length}`).dataValidation={rule:{type:'list',values:['P0','P1']}}; pull.getRange(`L5:L${4+rows.length}`).dataValidation={rule:{type:'list',values:['是','否','待确认']}}; pull.getRange(`J5:J${4+rows.length}`).conditionalFormats.add('containsText',{text:'PASS',format:{fill:C.green,font:{color:'#375623',bold:true}}}); pull.getRange(`J5:J${4+rows.length}`).conditionalFormats.add('containsText',{text:'BLOCKED',format:{fill:C.red,font:{color:'#9C0006',bold:true}}}); pull.getRange(`J5:J${4+rows.length}`).conditionalFormats.add('containsText',{text:'CHECK',format:{fill:C.yellow,font:{color:'#7F6000',bold:true}}}); pull.tables.add(`A4:N${4+rows.length}`,true,'WindPullList'); pull.freezePanes.freezeRows(4); widths(pull,{A:9,B:23,C:22,D:34,E:25,F:10,G:18,H:18,I:28,J:14,K:36,L:14,M:32,N:22});
+
+title(panel,'A1:H1','S3 面板规范'); panel.getRange('A2:H2').merge(); panel.getRange('A2').values=[['S3 只接受面板级数据与明确口径；城市池必须由用户批准。禁止未经批准将 70 城面板直接压成全国序列。']]; panel.getRange('A2:H2').format={fill:C.yellow,font:{color:'#7F6000'},wrapText:true};
+section(panel,'A4:H4','70 城房价城市面板：必须列'); panel.getRange('A5:D12').values=[['字段','类型/示例','必需性','验收说明'],['city','文本，如 Beijing','必填','城市名称需稳定、可追溯'],['city_code','文本，如 110000','建议','若 Wind 提供则保留，不得丢弃'],['date','日期 yyyy-mm-dd 或月末','必填','可排序、不可用展示字符串代替'],['yoy','数值，百分比','必填','新建住宅价格同比；单位确认'],['series_id','文本','必填','终端确认后的真实代码'],['unit','文本','必填','% 或终端明确单位'],['release_date','日期','必填','保留发布日期以便实时修订审计']]; head(panel,'A5:D5'); body(panel,'A6:D12');
+section(panel,'F4:H4','房地产开发资金：必须列'); panel.getRange('F5:H12').values=[['字段','类型/示例','验收说明'],['date','日期','月度，保留真实发布日期'],['funding_source','文本','资金来源维度（国内贷款/自筹/定金及预收/个人按揭等）'],['yoy_cum','数值，百分比','必须是资金来源累计同比'],['series_id','文本','终端确认后的真实代码'],['unit','文本','% 或终端明确单位'],['release_date','日期','修订与时点审计'],['scope','文本','全国口径或明确范围']]; head(panel,'F5:H5'); body(panel,'F6:H12');
+section(panel,'A14:H14','城市池与禁止项'); panel.getRange('A15:H18').merge(); panel.getRange('A15').values=[['城市池口径：用户批准后才可固定；记录批准日期、城市列表版本与缺失处理规则。禁止将面板均值/中位数直接当作全国序列，禁止用单一城市替代全国序列，禁止删掉 city/date/yoy 后直接改写 Asset score。']]; panel.getRange('A15:H18').format={fill:C.red,wrapText:true,verticalAlignment:'top'}; panel.freezePanes.freezeRows(4); widths(panel,{A:18,B:24,C:16,D:36,E:4,F:20,G:24,H:34});
+
+title(tmpl,'A1:F1','导出模板'); tmpl.getRange('A2:F2').merge(); tmpl.getRange('A2').values=[['每类文件独立导出；原始文件不覆盖。样例表头仅说明最小结构，实际字段以终端确认结果为准。']]; tmpl.getRange('A2:F2').format={fill:C.yellow,font:{color:'#7F6000'},wrapText:true};
+tmpl.getRange('A4:F4').values=[['数据类别','建议文件名','建议格式','最小列','必须保留元数据','样例表头']]; head(tmpl,'A4:F4');
+const trows=[['D2/D4 财政流量','cn_fiscal_flow_YYYYMMDD.xlsx','xlsx / csv','date,series_id,value','unit,frequency,definition,release_date,source,export_time','date | series_id | value | unit | release_date'],['USD_BROAD X1','usd_broad_x1_YYYYMMDD.xlsx','xlsx / csv','date,series_id,value','unit,frequency,definition,release_date,source,export_time','date | series_id | value | unit | release_date'],['GOLD X2','gold_usd_troy_oz_YYYYMMDD.xlsx','xlsx / csv','date,series_id,value','unit=USD/troy oz,frequency,definition,release_date,source,export_time','date | series_id | value | unit | release_date'],['US_REAL_YIELD_10Y','us_real_yield_10y_YYYYMMDD.xlsx','xlsx / csv','date,series_id,value','unit,tenor,definition,release_date,source,export_time','date | series_id | value | tenor | release_date'],['S3 房价面板','cn_new_house_price_city_YYYYMMDD.xlsx','xlsx / csv','city,date,yoy','city_code,series_id,unit,release_date,scope,city_pool_version','city | city_code | date | yoy | unit | release_date'],['房地产开发资金','cn_property_funding_YYYYMMDD.xlsx','xlsx / csv','date,funding_source,yoy_cum','series_id,unit,definition,release_date,scope,source','date | funding_source | yoy_cum | unit | release_date']]; tmpl.getRange('A5:F10').values=trows; body(tmpl,'A5:F10'); tmpl.freezePanes.freezeRows(4); widths(tmpl,{A:22,B:34,C:16,D:32,E:44,F:48});
+
+title(qc,'A1:Q1','验收检查'); qc.getRange('A2:Q2').merge(); qc.getRange('A2').values=[['编辑黄色单元格。完整性状态由公式驱动：仅当状态、负责人、实际文件名、真实起止日期、单位、口径、发布日期、重叠校验与最终结论均满足时显示 COMPLETE。']]; qc.getRange('A2:Q2').format={fill:C.yellow,font:{color:'#7F6000'},wrapText:true};
+const qh=['优先级','series_id','负责人','实际文件名','真实起始日期','真实结束日期','单位确认','口径确认','发布日期','重叠校验','最终结论','状态','完整性状态','导入建议','备注','必核规则','证据路径']; qc.getRange('A4:Q4').values=[qh]; head(qc,'A4:Q4');
+const qrows=[['P0','CN_TSF_TOTAL / CN_GOV_BOND_FINANCING','','','','','否','否','','不适用','待验收','NOT STARTED','','否','','D2/D4 必须是当月月度流量，禁止累计值/存量',''],['P0','USD_BROAD X1','','','','','否','否','','未检验','待验收','NOT STARTED','','否','','X1 需要 >=60 共同交易日 overlap，且同口径后才能并入',''],['P0','GOLD X2','','','','','否','否','','未检验','待验收','NOT STARTED','','否','','GOLD 必须 USD/troy oz；禁止 SHTAU 直接导入',''],['P1','US_REAL_YIELD_10Y','','','','','否','否','','未检验','待验收','NOT STARTED','','否','','确认期限、定义与单位',''],['P1','CN_NEW_HOUSE_PRICE_YOY','','','','','否','否','','不适用','待验收','NOT STARTED','','否','','S3 价格必须 city/date/yoy；城市池需用户批准',''],['P1','CN_PROPERTY_FUNDING_YOY','','','','','否','否','','不适用','待验收','NOT STARTED','','否','','资金必须资金来源累计同比，不能直接改 Asset score','']]; qc.getRange('A5:Q10').values=qrows; body(qc,'A5:Q10');
+for (let r=5;r<=10;r++) qc.getRange(`M${r}`).formulas=[[`=IF(AND(L${r}="PASS",C${r}<>"",D${r}<>"",E${r}<>"",F${r}<>"",G${r}="是",H${r}="是",I${r}<>"",OR(J${r}="通过",J${r}="不适用"),K${r}="通过"),"COMPLETE","INCOMPLETE")`]];
+qc.getRange('L5:L10').dataValidation={rule:{type:'list',values:['NOT STARTED','CHECK','PASS','BLOCKED']}}; qc.getRange('G5:H10').dataValidation={rule:{type:'list',values:['是','否','待确认']}}; qc.getRange('J5:J10').dataValidation={rule:{type:'list',values:['通过','未检验','不适用','阻塞']}}; qc.getRange('K5:K10').dataValidation={rule:{type:'list',values:['通过','待验收','阻塞']}}; qc.getRange('N5:N10').dataValidation={rule:{type:'list',values:['是','否','待确认']}}; edit(qc,'A5:L10'); qc.getRange('M5:M10').format={fill:C.gray,font:{bold:true},horizontalAlignment:'center'}; edit(qc,'O5:Q10'); qc.getRange('L5:L10').conditionalFormats.add('containsText',{text:'PASS',format:{fill:C.green,font:{color:'#375623',bold:true}}}); qc.getRange('L5:L10').conditionalFormats.add('containsText',{text:'BLOCKED',format:{fill:C.red,font:{color:'#9C0006',bold:true}}}); qc.getRange('M5:M10').conditionalFormats.add('containsText',{text:'COMPLETE',format:{fill:C.green,font:{color:'#375623',bold:true}}}); qc.getRange('M5:M10').conditionalFormats.add('containsText',{text:'INCOMPLETE',format:{fill:C.yellow,font:{color:'#7F6000'}}}); qc.getRange('E5:F10').setNumberFormat('yyyy-mm-dd'); qc.getRange('I5:I10').setNumberFormat('yyyy-mm-dd'); qc.tables.add('A4:Q10',true,'WindQCTable'); qc.freezePanes.freezeRows(4); widths(qc,{A:9,B:28,C:14,D:32,E:15,F:15,G:12,H:12,I:15,J:15,K:14,L:14,M:16,N:14,O:24,P:48,Q:28});
+
+title(red,'A1:E1','禁止替代与红线'); red.getRange('A2:E2').merge(); red.getRange('A2').values=[['触发任一红线时，状态必须 BLOCKED；不得用“近似可用”绕过验收。']]; red.getRange('A2:E2').format={fill:C.red,font:{bold:true,color:'#9C0006'},wrapText:true}; red.getRange('A4:E4').values=[['红线','错误替代','风险','正确处理','阻塞状态']]; head(red,'A4:E4'); red.getRange('A5:E11').values=[['未确认 code','凭经验填写 Wind code','拉错序列且不可审计','终端检索并保留证据','BLOCKED'],['D2/D4 口径错误','累计值 / 存量代替当月流量','财政压力信号失真','确认月度新增流量定义','BLOCKED'],['X1 overlap 不足','少于 60 个共同交易日仍并入','相关性与合成信号不稳','补齐窗口或明确不纳入','BLOCKED'],['X1 定义不一致','非 DTWEXBGS 同定义指数直接并入','广义美元信号不可比','同定义后再并入','BLOCKED'],['GOLD 单位错误','SHTAU 直接导入','单位与含义不一致','换成 USD/troy oz 并核验','BLOCKED'],['S3 结构错误','city/date/yoy 缺列或直接压全国序列','丢失异质性，无法复核','保留城市面板并等待城市池批准','BLOCKED'],['资金口径错误','非资金来源累计同比或直接改 Asset score','信用压力信号被人为改写','保留 funding_source 与 yoy_cum','BLOCKED']]; body(red,'A5:E11'); red.freezePanes.freezeRows(4); widths(red,{A:24,B:32,C:34,D:42,E:16});
+
+// Add compact tables and consistent default font/alignment to used ranges.
+for (const s of [guide,pull,panel,tmpl,qc,red]) { const u=s.getUsedRange(); u.format.font={name:'Aptos',size:10,color:C.dark}; }
+// Re-apply title/header font after global font assignment.
+for (const s of [guide,pull,panel,tmpl,qc,red]) { s.getRange('A1:Q1').format.font={name:'Aptos Display',size:16,bold:true,color:C.white}; }
+
+const check = await wb.inspect({kind:'table', range:'验收检查!A1:Q10', include:'values,formulas', tableMaxRows:12, tableMaxCols:18, maxChars:8000});
+await fs.writeFile(`${outDir}/inspect_qc.ndjson`, check.ndjson ?? String(check));
+const errors = await wb.inspect({kind:'match', searchTerm:'#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A', options:{useRegex:true,maxResults:300}, summary:'final formula error scan'});
+await fs.writeFile(`${outDir}/formula_errors.ndjson`, errors.ndjson ?? String(errors));
+for (const s of [guide,pull,panel,tmpl,qc,red]) { const img=await wb.render({sheetName:s.name, autoCrop:'all', scale:1, format:'png'}); await fs.writeFile(`${outDir}/render_${s.name}.png`, new Uint8Array(await img.arrayBuffer())); }
+const xlsx=await SpreadsheetFile.exportXlsx(wb); await xlsx.save(`${outDir}/Wind数据拉取与验收清单.xlsx`);
+console.log(JSON.stringify({output:`${outDir}/Wind数据拉取与验收清单.xlsx`, inspect:`${outDir}/inspect_qc.ndjson`, errors:`${outDir}/formula_errors.ndjson`, renders:6}));

@@ -1,0 +1,11 @@
+# Dedicated mapping for the localized Wind export
+# 美国:国债收益率:10年. This is nominal Treasury yield, not TIPS/real yield.
+date_column: Date
+
+columns:
+  "美国:国债收益率:10年":
+    series_id: US_TREASURY_NOMINAL_YIELD_10Y
+    category: macro
+    frequency: daily
+    unit: percent
+    name: 美国10年期名义国债收益率

@@ -134,6 +134,37 @@ _GOV_BOND_CUM_RE = re.compile(
     r"政府债券净融资\s*([\d.]+)\s*(万亿元|亿元)"
 )
 
+# Annual archive tables are kept as a separate contract from the monthly
+# cumulative reports.  The parser accepts simple HTML tables as well as CSV
+# exports, but requires an explicit year and never infers monthly dates.
+_ANNUAL_ROW_RE = re.compile(
+    r"(?P<year>20\d{2})\s*(?:年)?[^\d]{0,80}?"
+    r"(?P<tsf>-?[\d,]+(?:\.\d+)?)\s*(?:亿元)?[^\d]{0,80}?"
+    r"(?P<gov>-?[\d,]+(?:\.\d+)?)\s*(?:亿元)?",
+    re.IGNORECASE,
+)
+
+
+def parse_annual_tsf_table(text: str) -> list[tuple[pd.Timestamp, float, float]]:
+    """Parse annual PBOC TSF and government-bond values in 亿元.
+
+    Returns ``(year_end, tsf_total, government_bond_financing)`` sorted by
+    year.  A header row is ignored; malformed/ambiguous rows are rejected
+    rather than silently becoming observations.
+    """
+    plain = re.sub(r"<[^>]+>", " ", text)
+    plain = re.sub(r"&nbsp;|\s+", " ", plain)
+    rows: list[tuple[pd.Timestamp, float, float]] = []
+    for match in _ANNUAL_ROW_RE.finditer(plain):
+        year = int(match.group("year"))
+        tsf = float(match.group("tsf").replace(",", ""))
+        gov = float(match.group("gov").replace(",", ""))
+        rows.append((pd.Timestamp(year=year, month=12, day=31), tsf, gov))
+    dedup: dict[int, tuple[pd.Timestamp, float, float]] = {row[0].year: row for row in rows}
+    if not dedup:
+        raise FetchError("PBOC annual TSF table contains no parseable rows")
+    return [dedup[year] for year in sorted(dedup)]
+
 
 def parse_stats_listing(html: str, base_url: str) -> list[tuple[str, str]]:
     """(title, absolute URL) for monthly statistics report articles."""
@@ -224,6 +255,8 @@ class PbcAdapter(DataSourceAdapter):
             return self._fetch_omo(series_id, spec)
         if code in ("TSF_TOTAL", "GOV_BOND_FINANCING"):
             return self._fetch_stats(series_id, spec, code)
+        if code in ("TSF_TOTAL_ANNUAL", "GOV_BOND_FINANCING_ANNUAL"):
+            return self._fetch_annual_stats(series_id, spec, code)
         if code == "PRIVATE_TSF_YOY":
             return self._fetch_private_tsf_yoy(series_id, spec)
         raise FetchError(f"PBOC adapter has no route for provider_code '{code}'")
@@ -358,11 +391,15 @@ class PbcAdapter(DataSourceAdapter):
             cumulative[(year, month)] = values[code]
 
         months = sorted(cumulative)
-        dates, flows = cumulative_to_monthly(
+        dates, flows_100m = cumulative_to_monthly(
             [m[1] for m in months],
             [m[0] for m in months],
             [cumulative[m] for m in months],
         )
+        # Reports publish 亿元; canonical values are bn_cny (1 亿元 = 0.1
+        # bn CNY).  Apply the conversion after differencing so both inputs
+        # and resulting flows retain the report's native precision.
+        flows = [value / 10.0 for value in flows_100m]
         if not dates:
             raise FetchError(f"PBOC statistics reports contained no '{code}' cumulative values")
         return build_canonical_frame(
@@ -372,7 +409,27 @@ class PbcAdapter(DataSourceAdapter):
             provider=self.provider_id,
             source_file=listing_url,
             series_name=series_id,
-            unit="亿元",
+            # PBOC report values are in 亿元; canonical contracts use bn_cny.
+            unit="bn_cny",
             frequency=spec.frequency,
             category=spec.category,
+        )
+
+    def _fetch_annual_stats(self, series_id, spec, code) -> pd.DataFrame:
+        url = self.provider_spec.options.get("annual_table_url")
+        if not url:
+            raise FetchError("PBOC annual table URL is not configured")
+        html = http_get(url, timeout=self.provider_spec.timeout_seconds)
+        rows = parse_annual_tsf_table(html)
+        dates = [row[0].date() for row in rows]
+        column = 1 if code == "TSF_TOTAL_ANNUAL" else 2
+        # The PBOC table is published in 亿元, while the canonical indicator
+        # contract uses bn_cny.  1 亿元 = 0.1 bn CNY.
+        values = [row[column] / 10.0 for row in rows]
+        if not dates:
+            raise FetchError(f"PBOC annual table returned no '{code}' observations")
+        return build_canonical_frame(
+            series_id, dates, values, provider=self.provider_id,
+            source_file=url, series_name=series_id, unit="bn_cny",
+            frequency=spec.frequency, category=spec.category,
         )

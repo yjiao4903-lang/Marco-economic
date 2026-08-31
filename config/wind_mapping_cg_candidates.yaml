@@ -1,0 +1,50 @@
+# Isolated C-G candidate mapping for the 2026-08-30 Wind workbook.
+date_column: Date
+columns:
+  "现货价(伦敦市场):黄金:美元":
+    series_id: GOLD_LONDON_SPOT_USD_OZ_DAILY
+    category: market
+    frequency: daily
+    unit: usd_per_troy_oz
+    name: 伦敦黄金现货(美元/金衡盎司)
+    wind_id: S0031645
+    raw_unit: 美元/盎司
+    definition: 伦敦市场黄金现货日频源；由每月最后可得交易日派生并提升为 GOLD 生产月频
+  "中国:社会融资规模:当月值":
+    series_id: CN_TSF_TOTAL_WIND_CANDIDATE
+    category: macro
+    frequency: monthly
+    unit: bn_cny
+    name: 社会融资规模增量（月度流量，Wind候选)
+    wind_id: M5206730
+    raw_unit: 亿元
+    scale: 0.1
+    definition: 社会融资规模增量（月度净融资）当月值；Wind原始亿元按0.1转换为bn_cny；候选层，不接入D2
+  "中国:社会融资规模:政府债券:当月值":
+    series_id: CN_GOV_BOND_FINANCING_WIND_CANDIDATE
+    category: macro
+    frequency: monthly
+    unit: bn_cny
+    name: 社融政府债券净融资（月度流量，Wind候选）
+    wind_id: M6179492
+    raw_unit: 亿元
+    scale: 0.1
+    definition: 社融中政府债券净融资（月度流量）；Wind原始亿元按0.1转换为bn_cny；候选层，不接入D4
+  "中国:房屋销售价格指数:新建商品住宅:70个大中城市:当月同比":
+    series_id: CN_NEW_HOUSE_PRICE_YOY
+    category: macro
+    frequency: monthly
+    unit: percent
+    name: 70城新建商品住宅价格同比(Wind候选)
+    wind_id: S2707411
+    raw_unit: "%"
+    definition: 70城新建商品住宅当月同比；保留城市口径说明
+  "中国:房地产开发资金来源:累计同比":
+    series_id: CN_PROPERTY_FUNDING_YOY
+    category: macro
+    frequency: monthly
+    unit: percent
+    name: 房地产开发资金来源累计同比(Wind候选)
+    wind_id: S0073244
+    raw_unit: "%"
+    definition: 房地产开发资金来源累计同比；不填补每年1月系统性缺失
