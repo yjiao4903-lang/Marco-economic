@@ -1,6 +1,6 @@
 # Historical Coverage Matrix (V4.5 Historical Completion)
 
-> Generated 2026-08-30 by `python scripts/historical_coverage.py` from live canonical data + declared source-transition metadata. Read-only: nothing modified, no weights/thresholds/signal declarations touched, no synthetic rows. Target: 2012-present (minimum priority 2015-present); never splice incomparable data to hit a date target.
+> Generated 2026-09-01 by `python scripts/historical_coverage.py` from live canonical data + declared source-transition metadata. Read-only: nothing modified, no weights/thresholds/signal declarations touched, no synthetic rows. Target: 2012-present (minimum priority 2015-present); never splice incomparable data to hit a date target.
 
 ## Legend
 
@@ -15,50 +15,54 @@
 
 ## Core signals
 
-| signal_id   | name                      | input_series            | role       | earliest_observation   | current_source      | historical_source                                                     | frequency   | revision_risk   | status   | comparable_history_start   | blocker                                                                             |
-|:------------|:--------------------------|:------------------------|:-----------|:-----------------------|:--------------------|:----------------------------------------------------------------------|:------------|:----------------|:---------|:---------------------------|:------------------------------------------------------------------------------------|
-| G1          | China CLI                 | CHN_CLI                 | level      | 1992-05-01             | oecd                | same as current / n/a                                                 | monthly     | MEDIUM          | READY    | 1992-05-01                 |                                                                                     |
-| G2          | PMI New Orders            | CHN_PMI_NEW_ORDERS      | level      | 2025-10-31             | nbs+wind_manual     | same as current / n/a                                                 | monthly     | LOW             | READY    | 2025-10-31                 |                                                                                     |
-| G3          | Hard Activity Composite   | CN_IND_PROD_YOY         | preferred  | 2008-02-29             | akshare+wind_manual | same as current / n/a                                                 | monthly     | LOW             | READY    | 2008-02-29                 |                                                                                     |
-| G3          | Hard Activity Composite   | CN_RETAIL_SALES_YOY     | preferred  | 2008-01-31             | akshare+wind_manual | same as current / n/a                                                 | monthly     | LOW             | READY    | 2008-02-29                 |                                                                                     |
-| G3          | Hard Activity Composite   | CHN_IND_PROD_INDEX      | fallback   | 1996-01-01             | oecd                | same as current / n/a                                                 | monthly     | MEDIUM          | READY    | 2008-02-29                 |                                                                                     |
-| G3          | Hard Activity Composite   | CHN_RETAIL_SALES_INDEX  | fallback   | 1978-01-01             | oecd                | same as current / n/a                                                 | monthly     | MEDIUM          | READY    | 2008-02-29                 |                                                                                     |
-| G4          | Property Demand Composite | CN_PROPERTY_SALES_AREA  | component  | 2025-09-30             | nbs+wind_manual     | same as current / n/a                                                 | monthly     | LOW             | READY    | 2025-09-30                 |                                                                                     |
-| G4          | Property Demand Composite | CN_PROPERTY_SALES_VALUE | component  | 2025-09-30             | nbs+wind_manual     | same as current / n/a                                                 | monthly     | LOW             | READY    | 2025-09-30                 |                                                                                     |
-| G5          | Export Demand             | CHN_EXPORT_YOY          | level      | 1992-02-01             | oecd                | same as current / n/a                                                 | monthly     | MEDIUM          | READY    | 1992-02-01                 |                                                                                     |
-| I1          | Consumer Inflation        | CN_CORE_CPI_YOY         | preferred  | 2025-10-31             | nbs+wind_manual     | NBS CPI release historical (via update pipeline)                      | monthly     | LOW             | READY    | 2012-12-31                 |                                                                                     |
-| I1          | Consumer Inflation        | CN_CPI_YOY              | fallback   | 2008-01-31             | akshare+wind_manual | same as current / n/a                                                 | monthly     | LOW             | READY    | 2012-12-31                 |                                                                                     |
-| I2          | Industrial Inflation      | CN_PPI_YOY              | level      | 2006-01-31             | akshare+wind_manual | same as current / n/a                                                 | monthly     | LOW             | READY    | 2010-12-31                 |                                                                                     |
-| I3          | Cost Pressure Composite   | CHN_PMI_INPUT_PRICE     | component  | 2024-10-31             | nbs+wind_manual     | same as current / n/a                                                 | monthly     | LOW             | READY    | 2002-08-31                 |                                                                                     |
-| I3          | Cost Pressure Composite   | US_GSCPI                | component  | 1997-09-30             | nyfed               | same as current / n/a                                                 | monthly     | HIGH            | READY    | 2002-08-31                 |                                                                                     |
-| D1          | Funding Condition         | CN_DR007                | spread_leg | 2017-05-31             | chinamoney+akshare  | same as current / n/a                                                 | daily       | LOW             | READY    | 2024-12-30                 |                                                                                     |
-| D1          | Funding Condition         | CN_POLICY_RATE_7D       | spread_leg | 2024-01-01             | pbc+manual_series   | Committed step file data/manual_series/ (MANUAL provenance bootstrap) | daily       | MEDIUM          | READY    | 2024-12-30                 |                                                                                     |
-| D2          | Private Credit Impulse    | CN_TSF_TOTAL            | spread_leg | 2026-04-30             | pbc+akshare         | Wind one-shot backfill wind_backfill_tsf.csv (PENDING file)           | monthly     | MEDIUM          | WARMUP   |                            | wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice           |
-| D2          | Private Credit Impulse    | CN_GOV_BOND_FINANCING   | spread_leg | 2026-04-30             | pbc                 | Wind one-shot backfill wind_backfill_tsf.csv (PENDING file)           | monthly     | MEDIUM          | WARMUP   |                            | wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice           |
-| D3          | Excess Liquidity          | CN_M2_YOY               | spread_leg | 2008-01-31             | akshare+wind_manual | same as current / n/a                                                 | monthly     | LOW             | READY    | 2026-04-30                 |                                                                                     |
-| D3          | Excess Liquidity          | CN_PRIVATE_TSF_YOY      | spread_leg | 2026-04-30             | pbc                 | same as current / n/a                                                 | monthly     | LOW             | READY    | 2026-04-30                 |                                                                                     |
-| D4          | Fiscal Support            | CN_GOV_BOND_FINANCING   | level      | 2026-04-30             | pbc                 | Wind one-shot backfill wind_backfill_tsf.csv (PENDING file)           | monthly     | MEDIUM          | WARMUP   |                            | wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice           |
-| X1          | US 10Y Real Yield         | US_REAL_YIELD_10Y       | level      | 2024-01-02             | treasury+fred       | FRED DFII10 (fallback; NOT merged - overlap BLOCKED by FRED network)  | daily       | LOW             | READY    | 2024-12-31                 | FRED DFII10 unreachable (overlap BLOCKED 2026-08-30) - no FRED rows merged yet      |
-| X2          | Broad USD                 | USD_BROAD               | level      | 2026-08-17             | fred+fed_h10        | FRED DTWEXBGS (network BLOCKED; only H.10 fallback live so far)       | daily       | LOW             | WARMUP   |                            | FRED DTWEXBGS unreachable - only H.10 fallback weeks, history insufficient (WARMUP) |
-| X3          | ANFCI                     | ANFCI                   | level      | 1971-01-08             | chicagofed+fred     | same as current / n/a                                                 | weekly      | MEDIUM          | READY    | 1973-12-28                 |                                                                                     |
+| signal_id | name | input_series | role | earliest_observation | current_source | historical_source | frequency | revision_risk | status | comparable_history_start | blocker |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| G1 | China CLI | CHN_CLI | level | 1992-05-01 | oecd | same as current / n/a | monthly | MEDIUM | READY | 1992-05-01 |  |
+| G2 | PMI New Orders | CHN_PMI_NEW_ORDERS | level | 2025-10-31 | nbs+wind_manual | same as current / n/a | monthly | LOW | READY | 2025-10-31 |  |
+| G3 | Hard Activity Composite | CN_IND_PROD_YOY | preferred | 2008-02-29 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY | 2008-02-29 |  |
+| G3 | Hard Activity Composite | CN_RETAIL_SALES_YOY | preferred | 2008-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY | 2008-02-29 |  |
+| G3 | Hard Activity Composite | CHN_IND_PROD_INDEX | fallback | 1996-01-01 | oecd | same as current / n/a | monthly | MEDIUM | READY | 2008-02-29 |  |
+| G3 | Hard Activity Composite | CHN_RETAIL_SALES_INDEX | fallback | 1978-01-01 | oecd | same as current / n/a | monthly | MEDIUM | READY | 2008-02-29 |  |
+| G4 | Property Demand Composite | CN_PROPERTY_SALES_AREA | component | 2025-09-30 | nbs+wind_manual | same as current / n/a | monthly | LOW | READY | 2025-09-30 |  |
+| G4 | Property Demand Composite | CN_PROPERTY_SALES_VALUE | component | 2025-09-30 | nbs+wind_manual | same as current / n/a | monthly | LOW | READY | 2025-09-30 |  |
+| G5 | Export Demand | CHN_EXPORT_YOY | level | 1992-02-01 | oecd | same as current / n/a | monthly | MEDIUM | READY | 1992-02-01 |  |
+| I1 | Consumer Inflation | CN_CORE_CPI_YOY | preferred | 2025-10-31 | nbs+wind_manual | NBS CPI release historical (via update pipeline) | monthly | LOW | READY | 2012-12-31 |  |
+| I1 | Consumer Inflation | CN_CPI_YOY | fallback | 2008-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY | 2012-12-31 |  |
+| I2 | Industrial Inflation | CN_PPI_YOY | level | 2006-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY | 2010-12-31 |  |
+| I3 | Cost Pressure Composite | CHN_PMI_INPUT_PRICE | component | 2024-10-31 | nbs+wind_manual | same as current / n/a | monthly | LOW | READY | 2002-08-31 |  |
+| I3 | Cost Pressure Composite | US_GSCPI | component | 1997-09-30 | nyfed | same as current / n/a | monthly | HIGH | READY | 2002-08-31 |  |
+| D1 | Funding Condition | CN_DR007 | spread_leg | 2017-05-31 | chinamoney+akshare | same as current / n/a | daily | LOW | READY | 2024-12-30 |  |
+| D1 | Funding Condition | CN_POLICY_RATE_7D | spread_leg | 2024-01-01 | pbc+manual_series | Committed step file data/manual_series/ (MANUAL provenance bootstrap) | daily | MEDIUM | READY | 2024-12-30 |  |
+| D2 | Private Credit Impulse | CN_TSF_TOTAL | spread_leg | 2018-01-31 | wind+pbc | Wind historical 2018-01..2026-03 + PBC production tail from 2026-04 | monthly | MEDIUM | READY | 2018-01-31 | Production landed; conditionally accepted on public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent |
+| D2 | Private Credit Impulse | CN_GOV_BOND_FINANCING | spread_leg | 2018-01-31 | wind+pbc | Wind historical 2018-01..2026-03 + PBC production tail from 2026-04 | monthly | MEDIUM | READY | 2018-01-31 | Production landed; conditionally accepted on public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent |
+| D3 | Excess Liquidity | CN_M2_YOY | spread_leg | 2008-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY | 2026-04-30 |  |
+| D3 | Excess Liquidity | CN_PRIVATE_TSF_YOY | spread_leg | 2026-04-30 | pbc | same as current / n/a | monthly | LOW | READY | 2026-04-30 |  |
+| D4 | Fiscal Support | CN_GOV_BOND_FINANCING | level | 2018-01-31 | wind+pbc | Wind historical 2018-01..2026-03 + PBC production tail from 2026-04 | monthly | MEDIUM | READY | 2018-01-31 | Production landed; conditionally accepted on public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent |
+| X1 | US 10Y Real Yield | US_REAL_YIELD_10Y | level | 2024-01-02 | treasury+fred | FRED DFII10 (fallback; NOT merged - overlap BLOCKED by FRED network) | daily | LOW | READY | 2024-12-31 | FRED DFII10 unreachable (overlap BLOCKED 2026-08-30) - no FRED rows merged yet |
+| X2 | Broad USD | USD_BROAD | level | 2006-01-02 | fred+fed_h10 | FRED DTWEXBGS (canonical) | daily | LOW | READY | 2006-01-02 | FRED history restored; H.10 remains explicit fallback |
+| X3 | ANFCI | ANFCI | level | 1971-01-08 | chicagofed+fred | same as current / n/a | weekly | MEDIUM | READY | 1973-12-28 |  |
 
 ## Market signals
 
-| signal_id   | name                                | input_series         | role         | earliest_observation   | current_source         | historical_source     | frequency   | revision_risk   | status   | comparable_history_start   | blocker   |
-|:------------|:------------------------------------|:---------------------|:-------------|:-----------------------|:-----------------------|:----------------------|:------------|:----------------|:---------|:---------------------------|:----------|
-| M1          | CSI 300                             | CSI300               | confirmation | 2002-01-04             | eastmoney+akshare      | same as current / n/a | daily       | LOW             | READY    |                            |           |
-| M2          | Hang Seng Index                     | HSI                  | confirmation | 2013-08-20             | eastmoney+akshare      | same as current / n/a | daily       | LOW             | READY    |                            |           |
-| M3          | China 10Y Government Yield          | CN_GOV_YIELD_10Y     | confirmation | 2023-05-17             | chinabond+wind_manual  | same as current / n/a | daily       | LOW             | READY    |                            |           |
-| M4          | AAA Credit Spread                   | CN_AAA_CREDIT_SPREAD | confirmation | 2007-12-21             | chinabond+wind_manual  | same as current / n/a | daily       | LOW             | READY    |                            |           |
-| M5          | USD/CNY                             | USD_CNY              | confirmation | 2016-01-04             | chinamoney+wind_manual | same as current / n/a | daily       | LOW             | READY    |                            |           |
-| M6          | Industrial Commodity / Copper Proxy | COPPER_PRICE         | confirmation | 2016-08-30             | akshare                | same as current / n/a | daily       | LOW             | READY    |                            |           |
+| signal_id | name | input_series | role | earliest_observation | current_source | historical_source | frequency | revision_risk | status | comparable_history_start | blocker |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| M1 | CSI 300 | CSI300 | confirmation | 2002-01-04 | eastmoney+akshare | same as current / n/a | daily | LOW | READY |  |  |
+| M2 | Hang Seng Index | HSI | confirmation | 2013-08-20 | eastmoney+akshare | same as current / n/a | daily | LOW | READY |  |  |
+| M3 | China 10Y Government Yield | CN_GOV_YIELD_10Y | confirmation | 2023-05-17 | chinabond+wind_manual | same as current / n/a | daily | LOW | READY |  |  |
+| M4 | AAA Credit Spread | CN_AAA_CREDIT_SPREAD | confirmation | 2007-12-21 | chinabond+wind_manual | same as current / n/a | daily | LOW | READY |  |  |
+| M5 | USD/CNY | USD_CNY | confirmation | 2016-01-04 | chinamoney+wind_manual | same as current / n/a | daily | LOW | READY |  |  |
+| M6 | Industrial Commodity / Copper Proxy | COPPER_PRICE | confirmation | 2016-08-30 | akshare | same as current / n/a | daily | LOW | READY |  |  |
 
 ## Structural signals
 
-| signal_id   | name               | input_series         | role   | earliest_observation   | current_source   | historical_source     | frequency   | revision_risk   | status   | comparable_history_start   | blocker   |
-|:------------|:-------------------|:---------------------|:-------|:-----------------------|:-----------------|:----------------------|:------------|:----------------|:---------|:---------------------------|:----------|
-| S1          | Credit-to-GDP Gap  | CN_CREDIT_TO_GDP_GAP | level  | 1995-12-31             | bis              | same as current / n/a | quarterly   | HIGH            | READY    |                            |           |
-| S2          | Debt Service Ratio | CN_DSR               | level  | 1999-03-31             | bis              | same as current / n/a | quarterly   | HIGH            | READY    |                            |           |
+| signal_id | name | input_series | role | earliest_observation | current_source | historical_source | frequency | revision_risk | status | comparable_history_start | blocker |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| S1 | Credit-to-GDP Gap | CN_CREDIT_TO_GDP_GAP | level | 1995-12-31 | bis | same as current / n/a | quarterly | HIGH | READY |  |  |
+| S2 | Debt Service Ratio | CN_DSR | level | 1999-03-31 | bis | same as current / n/a | quarterly | HIGH | READY |  |  |
+| S3 | Property Vulnerability | CN_REAL_ESTATE_CLIMATE | component | 1998-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
+| S3 | Property Vulnerability | CN_HOUSEHOLD_LEVERAGE | component | 2005-03-01 | akshare+wind_manual | same as current / n/a | quarterly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
+| S3 | Property Vulnerability | CN_NEW_HOUSE_PRICE_YOY | component | 2011-01-31 | wind_manual | same as current / n/a | monthly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
+| S3 | Property Vulnerability | CN_PROPERTY_FUNDING_YOY | component | 1998-07-31 | wind_manual | same as current / n/a | monthly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
 
 ## Source-Transition notes (Task 4)
 
@@ -101,14 +105,14 @@
 ### USD_BROAD
 
 - **canonical_definition**: Fed broad trade-weighted USD index (Jan2006=100)
-- **historical_source**: FRED DTWEXBGS (network BLOCKED; only H.10 fallback live so far)
-- **live_source**: Fed H.10 weekly release page (fallback; only recent weeks)
-- **transition_date**: FRED restoration required to backfill longer history
-- **overlap**: n/a until FRED reachable
+- **historical_source**: FRED DTWEXBGS (canonical)
+- **live_source**: FRED DTWEXBGS / Fed H.10 fallback (route)
+- **transition_date**: n/a - canonical history is definition-equivalent
+- **overlap**: n/a - single canonical definition
 - **unit**: index (Jan 2006 = 100)
 - **frequency**: daily
-- **notes**: Same definition both legs. X2 stays WARMUP until history accumulates. FRED backfill is automatic on update - do NOT splice synthetic rows.
-- **breakpoint**: none declared; explicit WARMUP blocker
+- **notes**: Canonical contains 5174 observations from 2006-01-02 through 2026-08-21. FRED DTWEXBGS and H.10 use the same Jan 2006=100 definition; no synthetic splice is permitted.
+- **breakpoint**: none declared
 
 ### CN_POLICY_RATE_7D
 
@@ -150,5 +154,5 @@
 ## Summary
 
 - Core signals whose inputs are all live-and-comparable to 2012+: see per-signal `comparable_history_start` above.
-- Domestic target (>=3/4 READY) currently D1+D3 READY; D2/D4 held WARMUP until `wind_backfill_tsf.csv` is imported (no splice, no synthetic).
-- X1 overlap check = BLOCKED (FRED reach); X2 = WARMUP (FRED blocked).
+- Domestic target (>=3/4 READY) is D1-D4 READY; D2/D4 production replacement is landed and conditionally accepted on the public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent.
+- X1 overlap check remains governed by its own gate; X2 = READY (canonical history ready).

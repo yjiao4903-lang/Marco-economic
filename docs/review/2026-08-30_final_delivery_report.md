@@ -2,9 +2,11 @@
 
 - **报告日期**：2026-08-30
 - **评估对象**：`Personal Macro Asset Compass`（本地宏观监控与大类资产指引系统）
-- **代码基线**：`git rev-parse HEAD` = `4f5a57f`（tag **`v0.11-s3-property-pool`**）
-- **测试基线**：全量 pytest **全绿**（进度条计数约 263 项，含 Shadow/V4.6/S3 新增；
-  `-m network` opt-in；0 failed）
+- **实现基线**：`15c3dab`（Shadow/S3/D2-D4/V4.6 代码与数据）；文档同步基线 `4f5a57f`；
+  当前 tag **`v0.11-s3-property-pool`** 指向 `7570525`（本报告与版本政策同步提交）
+- **测试基线**：交付窗口记录全量 pytest **263 passed / 0 failed**（10 network deselected，
+  含 Shadow/V4.6/S3 新增）。当前协调环境缺项目 Python/pytest 依赖，本轮未独立复跑，故该数字
+  作为交付记录而非本轮重新验证事实。
 - **用途**：本报告为**外部评估窗口**提供自包含的项目全貌、验证路径与已知限制。
   所有结论可经报告中的命令与文件复现；未编造任何数字、来源或测试结果。
 - **交付定位**：V4.6 Empirical Validation Round 2 → **Shadow Operation 观察期**已启动；
@@ -77,11 +79,12 @@ python -m streamlit run src/macro_compass/ui/app.py   # V3 本地 Dashboard
 | Tag | 里程碑 | 语义 |
 |---|---|---|
 | v0.3-multisource-acquisition → v0.8-cloud-mirror | V0→V4 | 数据/引擎/市场/资产/验证/结构/UI/云镜像族 |
-| v0.9-data-completion | V4.5 | 数据补全 + Coverage Matrix + source-transition + 版本纪律 |
-| v0.10-empirical-validation | V4.6 | Empirical Validation Round 2（6 类如实 verdict + M3 regime + 专项） |
+| `v0.9-data-completion`（计划名，未创建 Git tag） | V4.5 | 数据补全 + Coverage Matrix + source-transition + 版本纪律；纳入 v0.11 |
+| `v0.10-empirical-validation`（计划名，未创建 Git tag） | V4.6 | Empirical Validation Round 2；纳入 v0.11 |
 | **v0.11-s3-property-pool** | Shadow 观察期 J3 | Shadow 基建 + B 包调研归档 + S3 四类代理池（PARTIAL 如实）+ D2/D4 占位 + V4.6 验证产物 |
 
-全部历史 tag 不重写、不覆盖；`v0.11` 指向干净 commit（`4f5a57f`，工作区无夹带运行产物）。
+全部历史 tag 不重写、不覆盖；截至本报告入库时，`v0.11` 指向 `7570525`。v0.9/v0.10 是
+产品里程碑计划名，不得作为实际存在的 Git tag 引用。
 
 ---
 
@@ -145,6 +148,10 @@ python -m streamlit run src/macro_compass/ui/app.py   # V3 本地 Dashboard
 | V4.6 样本充足性 | 约 21 个月 | wind 回填未到；Product Stable Review 前不追加结论 |
 | B 包调研抽验 | 待协调员 | 抽验后可在 87 号任务书登记 PASS |
 | S3 代理组合方向 | provisional（direction: negative） | 观察期登记于决策日志；不自动改 |
+| S3 逐代理方向统一 | **P0 待修复** | 当前四个代理均按原值 percentile 后平均；国房景气、房价同比、开发资金应与居民杠杆采用不同脆弱性方向。修复前 S3 仅为工程 PARTIAL，诊断解释 NOT ACCEPTED |
+| DuckDB 增量缓存一致性 | 待修复/回归 | 增量抓取 frame 传入全序列 refresh 时存在截断本地历史缓存的风险；Canonical Parquet 仍为真源，修复前更新后应重建并核对 DuckDB |
+| UI 同日快照运行门 | 待接线 | 已有 `same_day_alignment` 检查函数/测试，但页面主流程尚未把它作为阻断或警告 gate |
+| Market stale 状态语义 | 待闭环 | freshness 已参与置信度，但过期数据仍可能保持 READY；需统一状态与展示语义 |
 
 ---
 
@@ -163,6 +170,7 @@ python -m streamlit run src/macro_compass/ui/app.py   # V3 本地 Dashboard
 本项目已完成 **V0 → V4.6 → Shadow Operation 启动** 全链路交付并冻结 **v0.11**：数据层
 （15 Core 14/15 READY、6/6 Market、结构风险 S1/S2 真实 + S3 代理池落地）、验证层（V4.6
 六类如实 verdict）、UI（V3 本地 Dashboard）、云镜像（V4）、观察期基建（Shadow）均已
-落地且测试全绿。当前处于 **3–6 个月 Shadow Operation 观察期（非模型开发窗口）**：真实
+落地；交付窗口记录测试全绿，但当前协调环境尚未独立复跑。当前处于 **3–6 个月 Shadow
+Operation 观察期（非模型开发窗口）**：真实
 样本外方向证据将逐月累积，Product Stable Review 后由负责人决定模型升级 / 信号精简 /
 V5 方向。已知后补项（wind 回填、FRED、S3 两代理、B 包抽验）均显式登记，不阻塞。

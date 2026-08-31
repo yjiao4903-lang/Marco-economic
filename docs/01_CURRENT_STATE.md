@@ -2,14 +2,15 @@
 
 > 本文件是多 LLM 窗口交接的核心状态文件。每个开发窗口完成任务后必须更新。
 
-**最后人工确认基线：** 2026-08-30（V4.5，待验收）  
-**Current Version:** V4.5 Historical Completion（数据补全；V0–V4 全部冻结）  
-**当前阶段：** Fundamental Core **READY 14/15**（D2/D4 于 2026-08-30 按负责人指令以
-`WIND_PLACEHOLDER` 固定常数占位转 READY，显式标记、不伪装真实、可被后续 wind 文件覆盖；
-剩 X2 WARMUP 等 FRED 网络恢复）；**Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
+**最后人工确认基线：** 2026-09-01（生产落地与当前覆盖状态已核对；运行手册定向检查通过）
+**Current Version:** Shadow Operation（`v0.11-s3-property-pool`；3–6 个月观察期）
+**当前阶段：** Fundamental Core **READY 15/15**（D2/D4 生产历史已落地，release gate 为
+**conditionally accepted**，采用公开累计报告差分的 10 bn_cny 分辨率感知门；不是高精度同口径
+无条件 PASS，严格 live-PBC 原始解析验收门独立保留）；FRED/X2 历史已恢复并 **READY**；**Market Confirmation
+6/6 real READY**（M1-M6 全部真实数据）；
 **V2 Asset Compass 7/7 real READY**（资产层读取 factor 输出，无反向流）；
 **V2.6 Structural Risk 已实现**（S1/S2 走 BIS 真实季频；**S3 代理池已落地 2026-08-30，
-景气/杠杆 2/4 真实 → PARTIAL，价格/资金 Wind manual 待数据**，诊断层不进入 Asset Score）；
+四类代理 **READY 4/4**，但逐代理脆弱性方向复核仍是诊断解释约束，诊断层不进入 Asset Score）；
 **V3 Local Dashboard（Streamlit）已实现**（本地只读四面板 + 全链路可追溯下钻，
 读报告快照 CSV，不触发更新/不重算；as-of 同天对齐；synthetic 不显示为真实；无买卖/仓位字样）。
 **V4 Cloud Mirror 已实现**（Git 私有仓库后端 `python scripts/cloud_sync.py`：同步
@@ -20,9 +21,24 @@ Regime = TRANSITION（growth −0.357 ↓，inflation −0.031 中性带）。
 所有 `data/fixtures/` 下的数据均为 **synthetic 模拟数据**，不是真实市场数据，
 且默认不进入生产计算。
 
+## 当前状态同步（2026-09-01）
+
+- **FRED/X2**：`USD_BROAD` 历史已恢复，X2 = **READY**；H.10 仍保留为显式 fallback。X1 的
+  overlap gate 仍独立管理，不因 X2 恢复而自动放行。
+- **GOLD**：真实伦敦现货已入库；V4.6 资产验证 verdict = **SUPPORTED**（探索性结果，
+  不自动改变模型）。Gold real-yield decoupling 专项仍为 **DATA_BLOCKED**，因 pre-2022
+  实际利率历史不足。
+- **S3**：四类代理已接线，当前工程状态 **READY（4/4）**；逐代理脆弱性方向复核仍未完成，
+  因此诊断解释保留 **PROVISIONAL / NOT ACCEPTED**，且不进入 Asset Score。
+- **D2/D4**：生产替换已落地（2018-01..2026-03 Wind 历史 + 2026-04 起 PBC 生产尾部），
+  生产 ID、路由和候选序列保持不变；本次 release **conditionally accepted**，采用公开累计报告
+  差分的 `abs diff <= 10 bn_cny` 分辨率感知门。适用范围仅为公开累计报告差分；严格 live-PBC
+  原始解析验收门（共同月份、覆盖、对齐及 `0.1 bn_cny / 0.5%`）独立保留，未被本次接受替代。
+  备份已创建，DuckDB 已重建；不得重复执行 `promote_d2_d4.py --apply`。
+
 ## 1. 已完成
 
-### Window J3：B 包归档 + S3 代理池落地（87 号任务书，2026-08-30）— DONE（待协调员验收）
+### Window J3：B 包归档 + S3 代理池落地（87 号任务书，2026-08-30）— CONDITIONAL PASS
 
 **S3 Property Vulnerability 从「无输入 NO_SIGNAL」转「四类代理池 PARTIAL 读」。**
 B 包只读调研已归档 `docs/research/2026-08-30_bpack_structural_survey.md`（S1/S2 BIS 稳定性
@@ -42,12 +58,23 @@ B 包只读调研已归档 `docs/research/2026-08-30_bpack_structural_survey.md`
   无静默拼接**。价格/资金待 Wind 文件或 NBS 解析器落地后 → 4/4 READY。
 - **隔离保持**：S 信号**不进入 Asset Score**（源码级 grep + 行为级测试锁定，未动 assets/）；
   `config/assets.yaml`、Core Signal、所有阈值、Regime 参数**零改动**。
-- **测试**：`pytest` = **263 passed / 0 failed**（10 network deselected）；新增 S3 代理池
+- **测试（交付窗口记录，本轮协调复核未复跑）**：`pytest` = **263 passed / 0 failed**
+  （10 network deselected）；新增 S3 代理池
   组合/PARTIAL/READY/WARMUP/无数据 NO_SIGNAL 确定性测试 + 校验规则测试。
 - **改动文件**：`config/{indicators,data_sources,signals,structural}.yaml`、
   `src/macro_compass/structural/{engine,__init__}.py`、`akshare_source.py`（+2 路由）、
   `scripts/structural_report.py`、`tests/test_structural.py`、`tests/test_signal_registry.py`、
-  新增 `docs/research/2026-08-30_bpack_structural_survey.md`。建议 tag `v0.11-s3-property-pool`。
+  新增 `docs/research/2026-08-30_bpack_structural_survey.md`。Git tag
+  `v0.11-s3-property-pool` 当前指向 `7570525`（最终交付报告与版本政策同步提交）。
+
+**协调复核结论（2026-08-30）**：代码、配置、输出和 Git tag 已形成 v0.11 交付；S3 如实为
+PARTIAL 2/4，未进入 Asset Score。由于当前协调环境没有可用的项目 Python/pytest 依赖，263 项
+测试只保留为交付窗口记录，未升级为本轮独立复验事实；B 包关键端点仍需完成 2–4 项本地实测。
+因此 J3 定为 `conditional_pass`，不影响进入 Shadow 观察，但在 Product Stable Review 前必须补齐
+测试复验和端点抽验。另有一个 P0 语义缺口：S3 当前对四个代理直接计算同向 percentile 后平均，
+但国房景气、房价同比和开发资金通常为“越低越脆弱”，居民杠杆才是“越高越脆弱”；现有实现
+尚未逐代理统一方向。因此当前 S3 的 **工程状态为 PARTIAL，诊断解释为 PROVISIONAL / NOT
+ACCEPTED**，修正方向映射并回归前不得用于实质判断。
 
 ### V4.5 Historical Completion（85 号任务书，Window J1）— DONE（2026-08-30，待验收）
 
@@ -368,8 +395,8 @@ MISSING_INPUT 10。缺失序列共 20 条（G2/G4/I1-I3/D1-D4/X1-X3 及 M2/M4/M6
   WEIGHT_ROBUST（~0.98–0.99，prior 权重对方案扰动稳健）。
 - **LOMO**：早见 **growth:G3（硬活动）** 为唯一低增量候选（因子稳定 0.97、分离度移动 0.044）。
   **仅建议，未降级**；G2/G4/X2（刚接入）与 D2/D4（样本不足）已正确排除出候选。
-- **回归检验**：黄金实际利率脱钩 **DATA_BLOCKED**（real canonical 无 GOLD 现货——现有
-  GOLD 36 行为 synthetic 已隔离；且 X1 仅 2024 起，故 2022 断点不可观测 → 加入回填）；
+- **回归检验**：黄金实际利率脱钩仍 **DATA_BLOCKED**（GOLD 已补入真实伦敦现货
+  1968-01 至 2026-08 月频历史；但 X1 仅 2024 起，故 2022 断点仍不可观测）；
   信用债资金面敏感 **INSUFFICIENT_SAMPLE**（D1 历史仅 ~19 对齐样本）。
 
 
@@ -1004,8 +1031,8 @@ LOMO 候选 growth:G3 待历史补齐后由负责人决定是否降级。V4.6 �
   growth/inflation/global 虽有 2006+ 历史，但 2015–2024 资产分数缺 domestic 腿——五方法
   在部分覆盖率上的"NO_EFFECT_OR_WEAK"**非强证伪**，属探索性。
 - **前瞻收益均为代理，非资产真实收益**：股票/铜=价差收益、债券=−ModDur×Δyield（8y）、
-  AAA 信用=−ModDur×Δspread（3.5y，弱代理）、GOLD 仅 synthetic（无真实现货）。
-- **黄金脱钩 DATA_BLOCKED**：real canonical 无 GOLD 现货、X1 仅 2024 起，2022 断点不可观测
+  AAA 信用=−ModDur×Δspread（3.5y，弱代理）、GOLD 使用伦敦现货月末值。
+- **黄金脱钩 DATA_BLOCKED**：GOLD 已有真实现货，但 X1 仅 2024 起，2022 断点不可观测
   → 须回填 pre-2022 gold + 10Y 实际利率后才能再验证。
 - **信用债资金面敏感 INSUFFICIENT_SAMPLE**：D1 对齐样本 ~19，样本不足判断。
 - **LOMO candidate=growth:G3 仅为建议**：未经负责人批准，任何 Core 均未降级；G2/G4/X2

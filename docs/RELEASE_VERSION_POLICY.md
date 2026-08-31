@@ -38,7 +38,7 @@ v<MAJOR>.<MINOR>[-<suffix>]
 stable tag 应与 RUNNING 工程状态对齐：即"若在此 commit 停机，可完整重建并复现所有
 真实报告"。
 
-## 4. 当前工程 Tag 快照（截至 V4.5 冻结）
+## 4. 当前工程 Tag / Milestone 快照（截至 v0.11）
 
 | Tag | Product Milestone | 语义 | 状态 |
 |---|---|---|---|
@@ -53,14 +53,21 @@ stable tag 应与 RUNNING 工程状态对齐：即"若在此 commit 停机，可
 | v0.7-structural-risk | V2.6 | 结构风险 | 历史 |
 | v1.0-local | V3 | 本地 Dashboard | 历史 |
 | v0.8-cloud-mirror | V4 | 云镜像 | 历史 |
-| v0.9-data-completion | V4.5 | 数据补全 + Coverage Matrix + 版本纪律 | 稳定 |
-| v0.10-empirical-validation | V4.6 | Empirical Validation Round 2（6 类如实 verdict + M3 regime + 专项） | 稳定 |
-| **v0.11-s3-property-pool**（2026-08-30 冻结） | Shadow 观察期开发窗口 | Shadow 基建 + B 包调研归档 + S3 四类代理池（PARTIAL 如实）+ D2/D4 占位 + V4.6 验证产物 | **当前 stable（本次冻结）** |
+| —（计划名 `v0.9-data-completion`，未实际创建） | V4.5 | 数据补全 + Coverage Matrix + 版本纪律 | Product Milestone，纳入 v0.11 |
+| —（计划名 `v0.10-empirical-validation`，未实际创建） | V4.6 | Empirical Validation Round 2（6 类如实 verdict + M3 regime + 专项） | Product Milestone，纳入 v0.11 |
+| **v0.11-s3-property-pool**（2026-08-30） | Shadow 观察期诊断层窗口 | Shadow 基建 + B 包调研归档 + S3 四类代理池（当前 4/4 READY，解释仍受方向复核约束）+ D2/D4 生产落地（release gate conditionally accepted）+ V4.6 验证产物 | **当前实际 Git tag，指向 `7570525`** |
 
+> D2/D4 release policy（2026-09-01）：本次生产拼接采用公开累计报告差分的 `abs diff <= 10 bn_cny`
+> 分辨率感知门，状态为 **conditionally accepted**。适用范围是公开累计报告差分；严格 live-PBC
+> 原始解析验收门保持独立，不因该门通过而自动通过或被删除。
+>
 > 说明：`v0.8-cloud-mirror` 与 `v1.0-local` 的 MINOR 顺序由历史既成决定决定，此处仅如实
 > 登记，不重排、不重写。V4.6 之后进入 Shadow Operation 观察期；窗口 J3（87 号任务书，
 > S3 代理池）在观察期内完成诊断层开发并冻结 v0.11。后续版本由 Product Stable Review /
 > 负责人按 MASTER SPEC §15 决定。
+>
+> `v0.9-data-completion` 与 `v0.10-empirical-validation` 是曾建议使用的语义名称；截至本次
+> 对齐，`git tag` 中并不存在这两个 tag。不得把计划名称写成已经存在的 Git 审计锚点。
 
 ## 5. 打 tag 程序（协调员/负责人）
 

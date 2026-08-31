@@ -172,9 +172,10 @@ def main() -> None:
           f"financial factor only scores from ~2024-12 (D1 needs DR007+policy-rate "
           f"history), so pre-2024 asset scores omit domestic - weak results on them "
           f"are exploratory, not a strong refutation.")
-    print(f"  GOLD cannot be forward-validated (real spot series is synthetic-only "
-          f"in canonical); pre-2022 gold/real-yield history absent -> decoupling "
-          f"break unobservable (see regime check).")
+    print(f"  GOLD now has real London spot history in canonical (1968-01 to "
+          f"2026-08, monthly); forward validation is available subject to the "
+          f"declared horizon/sample gates. The real-yield decoupling check still "
+          f"depends on US_REAL_YIELD_10Y overlap.")
 
     _print_conclusion(regime, lomo, methods, sample)
 
@@ -200,14 +201,14 @@ def _print_conclusion(regime, lomo, methods, sample) -> None:
     print(f"3. LOMO: candidates (low-increment, high-history mechanisms) = "
           f"[{lomo_cand}]. Recommendations ONLY - no Core signal is downgraded by "
           f"this window (requires owner approval after backfill validation).")
-    print(f"4. REGIME CHECKS: {regime_txt}. Gold real-yield decoupling is "
-          f"DATA_BLOCKED (no real pre-2022 gold/real-yield history); M3 "
+    print(f"4. REGIME CHECKS: {regime_txt}. Gold real-yield decoupling remains "
+          f"INSUFFICIENT_SAMPLE because US_REAL_YIELD_10Y has no pre-2022 overlap; M3 "
           f"regime-dependence is INSUFFICIENT_SAMPLE (yield series starts "
           f"2023-05, few yield-down month-ends); credit funding-sensitivity "
           f"is INSUFFICIENT_SAMPLE (D1 history too short).")
     print(f"5. NEXT: Wind one-shot backfill (see backfill gaps) - TSF/gov-bond "
           f"financing, PMI orders/input-price, property, core CPI, policy rate "
-          f"history, USD_BROAD, real gold+pre-2022 real yield - then re-run this "
+          f"history, USD_BROAD, and pre-2022 real yield - then re-run this "
           f"report before any Core downgrade decision.")
 
 

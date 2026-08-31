@@ -3,34 +3,41 @@
 个人轻量化宏观监控与大类资产指引系统。本地优先，Wind 数据通过手工导出的 Excel/CSV 导入，
 系统内部转换为统一 long format，最终将宏观状态映射为大类资产的方向性指引。
 
-> 当前开发阶段：**V4.6 Empirical Validation Round 2（已完成）**；下一阶段 **Shadow Operation**
-> （3–6 个月观察，非开发窗口）。V0–V4.5 全部冻结。
-> **D2/D4 固定常数占位（2026-08-30，负责人指令）**：wind 数据后补空置期间，以
+> 当前开发阶段：**Shadow Operation（v0.11-s3-property-pool）**，进入 3–6 个月观察期；
+> V4.6 已完成，Window J3 的 S3 诊断层补全已冻结。观察期不是模型开发窗口。
+> **D2/D4 当前状态（2026-09-01）**：生产替换已落地：2018-01..2026-03 使用 Wind 历史，
+> 2026-04 起保留 PBC 生产尾部；**release gate = conditionally accepted**，采用公开累计报告差分的
+> **10 bn_cny 分辨率感知门**。该接受仅适用于公开累计报告差分，不表示高精度同口径已证实；严格
+> live-PBC 原始解析验收门独立保留。
+> 生产 ID、下游路由和候选序列均保留，已生成回滚备份并重建 DuckDB。以下占位内容为历史记录：
+> **固定常数占位（2026-08-30，负责人指令）**：wind 数据后补空置期间，以
 > `data/inbox/wind/wind_backfill_tsf_placeholder.csv`（固定常数，source=`WIND_PLACEHOLDER`）
 > 补齐 2018-01..2026-03 历史，D2/D4 由 WARMUP → **READY**（Core 14/15）。占位**显式标记、
 > 不覆盖真实 PBOC 观测（2026-04 起保留 PBC source）**、可被后续 `wind_backfill_tsf.csv`
 > 导入按 (date) 覆盖；占位段 yoy=0（中性），2026-04 起分数为真实数据驱动（边界 yoy 突变
 > 属占位基准近似，如实登记）。**不伪装真实、不改模型、无静默拼接**（asset trace 中
-> D2/D4 的 source 明确显示 WIND_PLACEHOLDER）。
+> D2/D4 的 source 明确显示历史占位来源）。
 > V4.5 只做数据补全：新增 `scripts/historical_coverage.py`（Historical Coverage Matrix 32 行 + 
 > `docs/HISTORICAL_COVERAGE_MATRIX.md`，含 source-transition 元数据）、`scripts/cloud_size.py`
 >（Cloud size monitor，`data/local/cloud_size_report.csv`）、`docs/RELEASE_VERSION_POLICY.md`
 >（Product Milestone vs Git Tag + 建议 `v0.9-data-completion`）。D2/D4 现为占位驱动 READY
->（Domestic 3/4）；X1 overlap check=BLOCKED（FRED 网络）、X2 WARMUP、
-> S3 NO_SIGNAL——全部显式、无 synthetic、无静默拼接、无模型改动（`git diff v0.8 config/` 为空）。
+>（Domestic 4/4）；X1 overlap check 仍按独立门管理，X2 已 READY。V4.5/J3 的历史状态仅作
+> 交付演进记录，当前状态以本段及 `docs/01_CURRENT_STATE.md` 为准。
 > 交付报告 `docs/V45_DATA_COMPLETION_REPORT.md`。
-> **Window J3 B 包归档 + S3 代理池（2026-08-30，v0.11-s3-property-pool 候选）**：
+> **Window J3 B 包归档 + S3 代理池（2026-08-30，已冻结为 v0.11-s3-property-pool）**：
 > B 包调研已归档 `docs/research/2026-08-30_bpack_structural_survey.md`；S3 四类代理池
 > （景气/杠杆/价格/资金）落地为**等权重 percentile 合成**，景气（AKShare 国房景气 326 行）与
-> 杠杆（AKShare/NIFD 居民杠杆 80 行）**真实入库 → S3 PARTIAL（2/4）**；价格/资金 Wind manual/
+> 杠杆（AKShare/NIFD 居民杠杆 80 行）**真实入库**；四类代理当前 **READY（4/4）**；价格/资金 Wind manual/
 > 不可得，无数据如实 `NO_SIGNAL`/PARTIAL（无 synthetic、无硬塞弱代理）；S 信号不进入 Asset Score
-> （assets/ 零改动）。
-> **V4.6 Empirical Validation Round 2（v0.10-empirical-validation 候选）已实现**：
-> 逐资产 Empirical Verdict（6 类如实输出：WEAKLY_SUPPORTED 港股/工业商品、MIXED 信用债 3m 方向反转、
-> NO_EFFECT_OR_WEAK A股/利率债/CNY、INSUFFICIENT_SAMPLE 黄金）+ M3 regime-dependent 检查 +
+> （assets/ 零改动）。当前各代理的脆弱性方向尚未逐项统一，S3 诊断解释保持 **PROVISIONAL / NOT
+> ACCEPTED**，修正方向映射并回归前只代表工程接线完成。
+> **V4.6 Empirical Validation Round 2（产品里程碑；纳入 v0.11，未单独创建 v0.10 Git tag）已实现**：
+> 逐资产 Empirical Verdict（6 类如实输出：GOLD **SUPPORTED**（探索性）、WEAKLY_SUPPORTED 港股/工业商品、
+> MIXED 信用债 3m 方向反转、NO_EFFECT_OR_WEAK A股/利率债/CNY）+ M3 regime-dependent 检查 +
 > Gold decoupling / Credit funding 专项；LOMO 候选 growth:G3（**不降级**）；五方法+权重鲁棒
 > （0.978–0.999）。结论（如实）：**既不证实、也不证伪** 方向信息价值（样本仍 ~21 个月，
-> wind 回填未到，属后补空置）；异象仅登记不改模型。交付报告 `docs/V46_EMPIRICAL_VALIDATION.md`。
+> wind 回填未到，属后补空置）；异象仅登记不改模型。Gold real-yield decoupling 仍因 pre-2022
+> 实际利率历史缺失而 DATA_BLOCKED。交付报告 `docs/V46_EMPIRICAL_VALIDATION.md`。
 > **Shadow Operation 基建（2026-08-30 交付）**：观察期（3–6 个月，非开发窗口）只读监控——
 > `scripts/shadow_metrics.py`（每月末方向一致性命中率，输出 `data/local/shadow/`）、
 > `docs/SHADOW_OPERATION_GUIDE.md`（运营指南）、`docs/shadow/decision_journal.md`（决策
@@ -39,7 +46,7 @@
 > 数据层 27 条序列自动获取（OECD/FRED/Treasury/ChicagoFed/NYFed(H.10)/PBOC/NBS/
 > ChinaMoney/ChinaBond/AKShare/Eastmoney + manual_series），append/replace_window/full_refresh
 > 三种更新策略 + vintage 快照；production 计算默认隔离 synthetic 数据。
-> Fundamental Core **READY 12/15** + WARMUP 3（D2/D4 等待 Wind 回填、X2 等 FRED 网络恢复）；
+> Fundamental Core **READY 15/15**（D2/D4 已生产落地，release gate conditionally accepted；X2 已 READY）；
 > **Market Confirmation 6/6 real READY**（M1-M6 全部真实数据）；
 > **V2 Asset Compass 7/7 real READY**（`python scripts/asset_report.py` 输出 7 资产
 > Score/View/1M/3M/逐因子与逐信号贡献/市场确认/置信快照；资产层只读 factor+market 输出，

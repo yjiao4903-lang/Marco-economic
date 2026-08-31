@@ -168,6 +168,52 @@ BACKFILL_BLOCKERS: dict[str, str] = {
 }
 
 
+def _refresh_usd_broad_state(canonical: pd.DataFrame) -> tuple[dict[str, dict], dict[str, str]]:
+    """Derive USD_BROAD transition/blocker text from the current canonical.
+
+    The matrix is a generated report, so a previous network failure must not
+    remain visible after a later canonical import succeeds.  Keep the
+    conservative readiness thresholds aligned with the market engine: 250
+    observations and 120 months of history.  This helper only changes report
+    metadata; it never writes or alters canonical data.
+    """
+    transitions = {key: dict(value) for key, value in SOURCE_TRANSITIONS.items()}
+    blockers = dict(BACKFILL_BLOCKERS)
+    rows = canonical[canonical["series_id"].eq("USD_BROAD")].copy() if (
+        not canonical.empty and "series_id" in canonical.columns
+    ) else pd.DataFrame()
+    if rows.empty:
+        return transitions, blockers
+
+    dates = pd.to_datetime(rows["date"], errors="coerce").dropna()
+    n = int(rows.loc[rows["value"].notna(), "date"].nunique())
+    start = dates.min().date().isoformat() if not dates.empty else ""
+    end = dates.max().date().isoformat() if not dates.empty else ""
+    months = ((dates.max().year - dates.min().year) * 12
+              + dates.max().month - dates.min().month + 1) if not dates.empty else 0
+    ready = n >= 250 and months >= 120
+
+    meta = transitions["USD_BROAD"]
+    meta["historical_source"] = "FRED DTWEXBGS (canonical)"
+    meta["live_source"] = "FRED DTWEXBGS / Fed H.10 fallback (route)"
+    meta["transition_date"] = "n/a - canonical history is definition-equivalent"
+    meta["overlap"] = "n/a - single canonical definition"
+    meta["notes"] = (
+        f"Canonical contains {n} observations from {start} through {end}. "
+        "FRED DTWEXBGS and H.10 use the same Jan 2006=100 definition; no "
+        "synthetic splice is permitted."
+    )
+    meta["breakpoint"] = "none declared"
+    if ready:
+        blockers.pop("X2", None)
+    else:
+        blockers["X2"] = (
+            f"USD_BROAD canonical history has {n} observations over {months} months "
+            "(<250 observations or <120 months) - WARMUP"
+        )
+    return transitions, blockers
+
+
 _MODE_TO_RISK = {"full_refresh": "HIGH", "replace_window": "MEDIUM", "append": "LOW"}
 
 
@@ -253,11 +299,12 @@ def main() -> None:
         registry, snapshot.availability, snapshot.computations,
         market_metrics, structural_readings,
     )
+    transitions, blockers = _refresh_usd_broad_state(snapshot.canonical)
 
     rows: list[Row] = []
     for signal_id, spec in registry.signals.items():
         status = resolved.get(signal_id, "n/a")
-        blocker = BACKFILL_BLOCKERS.get(signal_id, "")
+        blocker = blockers.get(signal_id, "")
         comp = snapshot.computations.get(signal_id)
         sig_frame = comp.frame if comp is not None else None
         if sig_frame is not None and not sig_frame.empty:
@@ -277,8 +324,8 @@ def main() -> None:
                 str(pd.Timestamp(ser.index.min()).date())
                 if ser is not None and len(ser) else ""
             )
-            hist = SOURCE_TRANSITIONS.get(sid, {}).get("historical_source", "same as current / n/a")
-            bp = SOURCE_TRANSITIONS.get(sid, {}).get("breakpoint", "")
+            hist = transitions.get(sid, {}).get("historical_source", "same as current / n/a")
+            bp = transitions.get(sid, {}).get("breakpoint", "")
             rows.append(Row(
                 signal_id=signal_id,
                 layer=spec.layer,
@@ -306,7 +353,7 @@ def main() -> None:
     print(f"Wrote {csv_path} ({len(df)} rows)")
 
     # --- markdown ---
-    md = _render_markdown(df, today)
+    md = _render_markdown(df, today, transitions=transitions)
     docs_path = paths.PROJECT_ROOT / "docs" / "HISTORICAL_COVERAGE_MATRIX.md"
     docs_path.write_text(md, encoding="utf-8")
     print(f"Wrote {docs_path}")
@@ -319,7 +366,10 @@ def main() -> None:
         print(f"{layer}: {len(sub)} series rows | status distribution: {summary}")
 
 
-def _render_markdown(df: pd.DataFrame, today: pd.Timestamp) -> str:
+def _render_markdown(
+    df: pd.DataFrame, today: pd.Timestamp, *, transitions: dict[str, dict] | None = None
+) -> str:
+    transitions = transitions or SOURCE_TRANSITIONS
     lines: list[str] = []
     lines.append("# Historical Coverage Matrix (V4.5 Historical Completion)")
     lines.append("")
@@ -356,12 +406,12 @@ def _render_markdown(df: pd.DataFrame, today: pd.Timestamp) -> str:
             "current_source", "historical_source", "frequency", "revision_risk",
             "status", "comparable_history_start", "blocker",
         ]]
-        lines.append(show.to_markdown(index=False))
+        lines.append(_dataframe_to_markdown(show))
         lines.append("")
 
     lines.append("## Source-Transition notes (Task 4)")
     lines.append("")
-    for sid, meta in SOURCE_TRANSITIONS.items():
+    for sid, meta in transitions.items():
         lines.append(f"### {sid}")
         lines.append("")
         for k, v in meta.items():
@@ -380,8 +430,40 @@ def _render_markdown(df: pd.DataFrame, today: pd.Timestamp) -> str:
         "- Domestic target (>=3/4 READY) currently D1+D3 READY; D2/D4 held WARMUP "
         "until `wind_backfill_tsf.csv` is imported (no splice, no synthetic)."
     )
-    lines.append("- X1 overlap check = BLOCKED (FRED reach); X2 = WARMUP (FRED blocked).")
+    x2 = df[df["signal_id"].eq("X2")]
+    x2_status = x2["status"].iloc[0] if not x2.empty else "n/a"
+    x2_blocker = x2["blocker"].iloc[0] if not x2.empty else ""
+    x2_summary = f"X2 = {x2_status}" + (f" ({x2_blocker})" if x2_blocker else " (canonical history ready)")
+    lines.append(f"- X1 overlap check remains governed by its own gate; {x2_summary}.")
     return "\n".join(lines)
+
+
+def _dataframe_to_markdown(df: pd.DataFrame) -> str:
+    """Render a dataframe as a Markdown table without requiring ``tabulate``.
+
+    ``DataFrame.to_markdown`` is a convenience wrapper around the optional
+    ``tabulate`` package.  This report is part of the normal local pipeline,
+    so an optional presentation dependency must not prevent CSV/Markdown
+    generation.  Keep the renderer deliberately small and deterministic: the
+    report tables contain scalar values and do not need tabulate's alignment or
+    numeric-formatting features.
+    """
+    columns = [str(column) for column in df.columns]
+
+    def cell(value: object) -> str:
+        if pd.isna(value):
+            return ""
+        # Markdown tables use | as a delimiter; preserve the value while
+        # preventing a free-text field from creating additional columns.
+        return str(value).replace("|", r"\|").replace("\r\n", "<br>").replace("\n", "<br>")
+
+    header = "| " + " | ".join(cell(column) for column in columns) + " |"
+    separator = "| " + " | ".join("---" for _ in columns) + " |"
+    body = [
+        "| " + " | ".join(cell(value) for value in row) + " |"
+        for row in df.itertuples(index=False, name=None)
+    ]
+    return "\n".join([header, separator, *body])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,11 @@
 # Personal Macro Asset Compass — 协调员交接文档（Coordinator Handoff）
 
-**交接日期**：2026-08-30　|　**撰写**：卸任协调员窗口
+> **历史文档提示（2026-08-30）**：本文主体冻结于 V1.6A 交接期，内部的“当前状态”、测试数、
+> 待办队列和 tag 指针已经过时，不再作为当前工程事实。当前接手请以
+> `docs/01_CURRENT_STATE.md`、`docs/review/2026-08-30_final_delivery_report.md` 和实际
+> `git log` / `git tag` 为准；当前阶段为 `v0.11-s3-property-pool` 后的 Shadow Operation。
+
+**交接日期**：2026-09-01　|　**撰写**：状态同步窗口
 **接收方**：下一任协调员窗口（负责 D1 验收及之后的全部协调工作）
 **如何使用本文档**：这是你的工作手册。先通读一遍，然后按 §3 核实当前状态、按 §8 执行 D1 验收。
 本文档自包含——所有背景都在文内或指向的仓库文件里，不依赖任何会话历史。
@@ -38,7 +43,7 @@ Domestic/Global）+ Regime → （进行中）市场确认层 → （未来）7 
 Economic Coverage（关键机制有真实数据吗）/ Explainability（能回到 raw source 吗）/
 Empirical Value（历史上真有信息吗）/ Maintenance Cost（用户每月要动手几次）。
 
-## 3. 当前状态快照（截至 2026-08-30，接收后请先核实）
+## 3. 当前状态快照（截至 2026-09-01）
 
 ```bash
 cd D:\宏观监控体系
@@ -48,13 +53,14 @@ python -m pytest 2>&1 | tail -1     # 应 176 passed（D1 交付后会更多）
 ```
 
 - **最新 tag**：`v0.4c-pre-market-stable`（V1.5E 数据稳定版）；
-- **覆盖**：15 Core 中 12 READY（Growth 5/5、Inflation 3/3、Domestic 2/4、Global 2/3）+
-  3 WARMUP（D2/D4 等 Wind 回填、X2 等 FRED 恢复）；Regime = TRANSITION（真实数据）；
+- **覆盖**：15 Core **15/15 READY**；FRED/X2 已恢复并 READY；D2/D4 生产历史已落地，
+  但 release gate 为 **conditionally accepted**（采用公开累计报告差分 10 bn_cny 分辨率感知门，
+  不等于高精度同口径无条件 PASS）；严格 live-PBC 原始解析验收门独立保留；Regime = TRANSITION（真实数据）。
 - **进行中**：**Window D1 = V1.6A Market Confirmation**（任务书
   `docs/tasks/50_V1_6A_MARKET_CONFIRMATION.md`，含 G0 预置任务=G3 活源切换，
   这是负责人已批准的唯一 frozen signals.yaml 变更）；
-- **等待用户**：`wind_backfill_tsf.csv`（社融增量总量+政府债券流量，建议含存量两列；
-  用户已确认数据可取得，尚未上传）；
+- **D2/D4**：2018-01..2026-03 Wind 历史已落地，2026-04 起保留 PBC 尾部；备份与 DuckDB
+  重建已完成。后续仅需按决策简报确认 release gate 策略，不重复执行 `--apply`。
 - **外部调研已完成 3 轮**（全部归档并抽验，见 §12）。
 
 **若实际状态与上述不符**：以代码和测试为准，先向用户报告差异。
@@ -182,8 +188,8 @@ silent fallback——四句话术原样使用。
 | 事项 | Owner | 状态 |
 |---|---|---|
 | `wind_backfill_tsf.csv` 上传（社融增量+政府债券流量，建议含存量两列） | 用户 | 已确认可取得，待上传 |
-| 文件到达后的导入：走 Wind manual import 链 → D2/D4 转 READY（若含存量列，D3 历史同步加固）→ 更新 CURRENT_STATE 覆盖数字 | **你（协调员）** | 导入链已就绪（v0.4c） |
-| FRED 网络恢复：跑 update 补 X2 历史；**必须先跑 `scripts/overlap_check.py` 且 PASS（≥60 共同交易日）才允许 FRED 行并入 X1**（armed 闸门） | 你（或提醒用户跑 update） | X2=WARMUP、X1 overlap BLOCKED |
+| D2/D4 生产落地后的 release gate 取舍 | 负责人/协调员 | **已确认 conditionally accepted**：采用公开累计报告差分 10 bn_cny 门；严格 live-PBC 原始解析验收门独立保留；见 `docs/review/2026-09-01_d2_d4_release_decision_brief.md` |
+| FRED/X2 历史恢复与 X1 overlap | 协调员 | X2=READY；X1 overlap 仍由独立硬门控制 |
 | ChinaMoney WAF 限流、AKShare 接口变更风险、check_quality 混频警告 | 持续观察 | 见 CURRENT_STATE §10 |
 | 本机代理分流实验（trust_env=False 按域名分流，可能同时解决 FRED 超时与 eastmoney push2） | 可建议 D1 或下窗顺手做 | 假设成立但未验证 |
 
