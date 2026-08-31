@@ -72,10 +72,11 @@ class DuckDBStore:
     # --- writes ------------------------------------------------------------
 
     def refresh_series_data(self, canonical: pd.DataFrame) -> int:
-        """Replace series_data rows for the series present in ``canonical``.
+        """Upsert observations without truncating history.
 
-        Refreshing per-series (instead of appending) keeps DuckDB exactly in
-        sync with the canonical parquet merge semantics (latest import wins).
+        Incremental providers pass only a revision window.  Delete only the
+        fetched ``(series_id, date)`` keys before inserting, so older
+        observations already cached in DuckDB remain available.
         """
         if canonical.empty:
             return 0
@@ -83,10 +84,11 @@ class DuckDBStore:
                         "import_time", "file_hash"]].copy()
         df["date"] = pd.to_datetime(df["date"]).dt.date
         df["import_time"] = pd.to_datetime(df["import_time"])
-        series = list(df["series_id"].unique())
-        placeholders = ", ".join("?" for _ in series)
-        self.conn.execute(f"DELETE FROM series_data WHERE series_id IN ({placeholders})", series)
         self.conn.register("df_new", df)
+        self.conn.execute(
+            "DELETE FROM series_data AS old USING df_new AS new "
+            "WHERE old.series_id = new.series_id AND old.date = new.date"
+        )
         self.conn.execute("INSERT INTO series_data SELECT * FROM df_new")
         self.conn.unregister("df_new")
         return len(df)

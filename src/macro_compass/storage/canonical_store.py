@@ -49,7 +49,12 @@ def append_canonical(new_data: pd.DataFrame) -> dict[str, int]:
         path = canonical_path_for(str(category))
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        existing = read_canonical(str(category))
+        # Parquet-backed canonical data historically stores dates as
+        # ``datetime.date`` objects, while adapters are allowed to return
+        # pandas Timestamps.  Normalize both sides before concat/sort so the
+        # write boundary is stable across providers and old files.
+        group = _normalise_dates(group)
+        existing = _normalise_dates(read_canonical(str(category)))
         merged = (
             pd.concat([existing, group], ignore_index=True)
             if not existing.empty
@@ -83,7 +88,8 @@ def replace_window(new_data: pd.DataFrame) -> dict[str, int]:
     for category, category_group in new_data.groupby("category"):
         path = canonical_path_for(str(category))
         path.parent.mkdir(parents=True, exist_ok=True)
-        existing = read_canonical(str(category))
+        category_group = _normalise_dates(category_group)
+        existing = _normalise_dates(read_canonical(str(category)))
         if existing.empty:
             merged = category_group.copy()
         else:
@@ -126,8 +132,23 @@ def replace_series(new_data: pd.DataFrame) -> dict[str, int]:
 
 
 def _normalise(frame: pd.DataFrame) -> pd.DataFrame:
+    frame = _normalise_dates(frame)
     return (
         frame.sort_values(["series_id", "date"])
         .drop_duplicates(subset=["series_id", "date"], keep="last")
         .reset_index(drop=True)
     )
+
+
+def _normalise_dates(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize canonical dates to ``datetime.date`` at the storage boundary.
+
+    Existing canonical files use Python dates, but adapter outputs may use
+    ``pd.Timestamp`` (or another parseable date representation).  A copy is
+    returned so callers' frames are not mutated.
+    """
+    if "date" not in frame.columns or frame.empty:
+        return frame.copy()
+    normalized = frame.copy()
+    normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce").dt.date
+    return normalized

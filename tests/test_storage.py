@@ -13,6 +13,7 @@ from macro_compass import paths
 from macro_compass.config import load_indicator_config
 from macro_compass.ingestion.quality import check_quality
 from macro_compass.pipeline import import_wind_file
+from macro_compass.storage.canonical_store import append_canonical, read_canonical
 from macro_compass.storage.duckdb_store import DuckDBStore, rebuild_duckdb_from_canonical
 
 PROJECT_ROOT = paths.PROJECT_ROOT
@@ -134,6 +135,37 @@ def test_overlapping_new_file_updates_instead_of_duplicating(data_env, tmp_path,
     assert db_dup == 0
 
 
+def test_append_normalizes_new_timestamp_against_existing_date(data_env):
+    """The canonical write boundary accepts mixed legacy and adapter date types."""
+    common = {
+        "series_id": ["S1"],
+        "value": [1.0],
+        "source": ["fake"],
+        "source_file": ["fake://old"],
+        "import_time": [pd.Timestamp("2026-08-01")],
+        "series_name": ["S1"],
+        "unit": ["index"],
+        "frequency": ["daily"],
+        "category": ["macro"],
+        "file_hash": [None],
+    }
+    existing = pd.DataFrame({**common, "date": [pd.Timestamp("2026-08-01").date()]})
+    append_canonical(existing)
+
+    revised = pd.DataFrame({
+        **{**common, "value": [2.0], "source_file": ["fake://new"],
+           "import_time": [pd.Timestamp("2026-08-02")]},
+        "date": [pd.Timestamp("2026-08-01")],
+    })
+    result = append_canonical(revised)
+
+    stored = read_canonical("macro")
+    assert result == {"macro": 1}
+    assert len(stored) == 1
+    assert stored.loc[0, "value"] == 2.0
+    assert stored.loc[0, "date"] == pd.Timestamp("2026-08-01").date()
+
+
 def test_rebuild_db_from_canonical(data_env, sample_file, mapping):
     import_wind_file(sample_file, mapping, REGISTRY)
 
@@ -150,6 +182,25 @@ def test_rebuild_db_from_canonical(data_env, sample_file, mapping):
     pd.testing.assert_frame_equal(before, after)
     assert counts_live["series_data"] == counts["series_data"] > 0
     assert counts_live["import_manifest"] == 1, "manifest must survive DuckDB deletion"
+
+
+def test_incremental_duckdb_refresh_preserves_older_history(data_env):
+    """A revision-window frame must upsert keys, not replace the whole series."""
+    old = pd.DataFrame({
+        "series_id": ["S1", "S1"],
+        "date": pd.to_datetime(["2026-01-01", "2026-02-01"]),
+        "value": [1.0, 2.0], "source": ["x", "x"],
+        "source_file": ["a", "a"], "import_time": [pd.Timestamp("2026-02-02")] * 2,
+        "file_hash": ["h1", "h1"],
+    })
+    revision = old.iloc[[1]].copy()
+    revision["value"] = 20.0
+    with DuckDBStore(data_env.duckdb_path) as store:
+        store.refresh_series_data(old)
+        store.refresh_series_data(revision)
+        result = store.read_series("S1")
+    assert list(result["date"].astype(str)) == ["2026-01-01", "2026-02-01"]
+    assert list(result["value"]) == [1.0, 20.0]
 
 
 # --- V1-05: quality checks ---------------------------------------------------
