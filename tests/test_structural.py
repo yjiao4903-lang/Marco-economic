@@ -107,6 +107,14 @@ def test_structural_yaml_declared_priors(structural_config) -> None:
     assert s3["trend_quarters"] == 4
     assert s3["thresholds"]["elevated_percentile"] == 0.80
     assert s3["thresholds"]["moderate_percentile"] == 0.50
+    assert set(s3["input_directions"]) == set(s3["required_inputs"]) | {
+        "CN_REAL_ESTATE_CLIMATE", "CN_HOUSEHOLD_LEVERAGE"
+    }
+    assert set(s3["required_inputs"]) == {
+        "CN_NEW_HOUSE_PRICE_YOY", "CN_PROPERTY_FUNDING_YOY"
+    }
+    assert s3["input_directions"]["CN_HOUSEHOLD_LEVERAGE"] == "negative"
+    assert s3["input_directions"]["CN_NEW_HOUSE_PRICE_YOY"] == "positive"
 
 
 def test_structural_yaml_rejects_implicit_direction(tmp_path) -> None:
@@ -169,7 +177,8 @@ def test_s3_partial_proxy_pool_composite(registry, structural_config) -> None:
 
     today = pd.Timestamp("2026-08-30")
     n = 80  # > percentile_window 20
-    # climate: high flat (fragile) -> composite percentile ~ near 1.0 over time
+    # climate: low flat (less fragile) -> composite percentile near 0 after
+    # the declared positive-direction reversal
     series = {
         "CN_REAL_ESTATE_CLIMATE": _proxy(n, [91.0 + 0.0 * i for i in range(n)]),
         "CN_HOUSEHOLD_LEVERAGE": pd.Series(
@@ -189,8 +198,9 @@ def test_s3_partial_proxy_pool_composite(registry, structural_config) -> None:
     assert r.available_count == 2 and r.inputs_total == 4
     assert r.level is not None and 0.0 <= r.level <= 1.0
     assert "2/4" in r.message and "CN_NEW_HOUSE_PRICE_YOY" in r.message
-    # rising proxy percentiles -> fragile diagnostic
-    assert r.diagnostic in ("ELEVATED", "MODERATE")
+    # Low climate and leverage proxies produce a benign, interpretable
+    # composite; the pool remains PARTIAL because core dimensions are absent.
+    assert r.diagnostic == "BENIGN"
 
 
 def test_s3_ready_when_all_proxies_land(registry, structural_config) -> None:
@@ -223,6 +233,37 @@ def test_s3_ready_when_all_proxies_land(registry, structural_config) -> None:
     assert _compute(registry, structural_config, series, today)["S1"].status == MISSING_INPUT
 
 
+def test_s3_uses_only_closed_quarters_and_checks_each_agent_freshness(
+    registry, structural_config
+) -> None:
+    """An open-quarter July observation cannot become a future Q3 as_of.
+
+    A tight price budget must also make S3 stale even when climate has a much
+    looser budget; the composite must not hide the candidate's lag.
+    """
+    today = pd.Timestamp("2026-08-31")
+    n = 79  # 2020-01 through 2026-07; July is in the open Q3
+    monthly = pd.date_range("2020-01-31", periods=n, freq="ME")
+    q = pd.date_range("2020-03-31", periods=26, freq="QE")
+    series = {
+        "CN_REAL_ESTATE_CLIMATE": pd.Series([95.0 + i * 0.05 for i in range(n)], index=monthly),
+        "CN_HOUSEHOLD_LEVERAGE": pd.Series([65.0 + i * 0.1 for i in range(len(q))], index=q),
+        "CN_NEW_HOUSE_PRICE_YOY": pd.Series([1.0 + i * 0.1 for i in range(n)], index=monthly),
+        "CN_PROPERTY_FUNDING_YOY": pd.Series([-5.0 + i * 0.1 for i in range(n)], index=monthly),
+    }
+    budgets = {sid: 260 for sid in series}
+    budgets["CN_NEW_HOUSE_PRICE_YOY"] = 30
+    r = _compute(registry, structural_config, series, today, budgets)["S3"]
+
+    assert r.status == READY
+    assert r.as_of == pd.Timestamp("2026-06-30")
+    assert r.as_of <= today
+    assert r.stale is True
+    assert r.stale_series_ids == ["CN_NEW_HOUSE_PRICE_YOY"]
+    assert "CN_NEW_HOUSE_PRICE_YOY" in r.message
+    assert "2026-09-30" not in r.message
+
+
 def test_s3_warmup_when_history_short(registry, structural_config) -> None:
     """Proxy history shorter than the declared window with ALL proxies present
     -> WARMUP (not PARTIAL, since no category is actually missing)."""
@@ -240,6 +281,78 @@ def test_s3_warmup_when_history_short(registry, structural_config) -> None:
     r = _compute(registry, structural_config, series, today)["S3"]
     assert r.status == WARMUP
     assert r.available_count == 4
+
+
+def test_s3_aligns_proxy_directions_to_fragility(registry, structural_config) -> None:
+    """Rising price/funding (improvement) must lower fragility after reversal."""
+    from macro_compass.structural import READY
+
+    today = pd.Timestamp("2026-08-30")
+    n = 80
+    q = pd.date_range("2015-12-31", periods=20, freq="QE")
+    common = {
+        "CN_REAL_ESTATE_CLIMATE": _proxy(n, [90.0] * n),
+        "CN_HOUSEHOLD_LEVERAGE": pd.Series([60.0] * 20, index=q),
+    }
+    improving = {
+        **common,
+        "CN_NEW_HOUSE_PRICE_YOY": _proxy(n, list(range(n))),
+        "CN_PROPERTY_FUNDING_YOY": _proxy(n, list(range(n))),
+    }
+    worsening = {
+        **common,
+        "CN_NEW_HOUSE_PRICE_YOY": _proxy(n, list(range(n, 0, -1))),
+        "CN_PROPERTY_FUNDING_YOY": _proxy(n, list(range(n, 0, -1))),
+    }
+    kwargs = {sid: 3000 for sid in improving}
+    low = _compute(registry, structural_config, improving, today, kwargs)["S3"]
+    high = _compute(registry, structural_config, worsening, today, kwargs)["S3"]
+    assert low.status == high.status == READY
+    assert low.level < high.level
+
+
+def test_s3_climate_direction_tracks_fragility(registry, structural_config) -> None:
+    """Lower景气 is less fragile; a drop from moderate to low is more fragile."""
+    from macro_compass.structural import READY
+
+    today = pd.Timestamp("2026-08-30")
+    n = 80
+    q = pd.date_range("2015-12-31", periods=20, freq="QE")
+    common = {
+        "CN_HOUSEHOLD_LEVERAGE": pd.Series([60.0] * 20, index=q),
+        "CN_NEW_HOUSE_PRICE_YOY": _proxy(n, list(range(n))),
+        "CN_PROPERTY_FUNDING_YOY": _proxy(n, list(range(n))),
+    }
+    recovering = {
+        **common,
+        "CN_REAL_ESTATE_CLIMATE": _proxy(n, [90.0] * 79 + [95.0]),
+    }
+    deteriorating = {
+        **common,
+        "CN_REAL_ESTATE_CLIMATE": _proxy(n, [95.0] * 79 + [90.0]),
+    }
+    kwargs = {sid: 3000 for sid in recovering}
+    low = _compute(registry, structural_config, recovering, today, kwargs)["S3"]
+    high = _compute(registry, structural_config, deteriorating, today, kwargs)["S3"]
+    assert low.status == high.status == READY
+    assert low.level < high.level
+
+
+def test_s3_core_dimensions_gate_ready(registry, structural_config) -> None:
+    """A long climate/leverage history cannot produce READY without price/funding."""
+    from macro_compass.structural import PARTIAL
+
+    today = pd.Timestamp("2026-08-30")
+    n = 80
+    q = pd.date_range("2015-12-31", periods=20, freq="QE")
+    series = {
+        "CN_REAL_ESTATE_CLIMATE": _proxy(n, [90.0] * n),
+        "CN_HOUSEHOLD_LEVERAGE": pd.Series([60.0] * 20, index=q),
+    }
+    r = _compute(registry, structural_config, series, today, {sid: 3000 for sid in series})["S3"]
+    assert r.status == PARTIAL
+    assert r.available_count == 2
+    assert r.level is not None
 
 
 def test_s1_missing_input_when_no_data(registry, structural_config) -> None:

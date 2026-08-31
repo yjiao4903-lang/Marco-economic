@@ -89,7 +89,7 @@ def _render_header(state: loader.DashboardState) -> None:
     st.title("宏观资产罗盘 · 本地快照")
     st.caption(
         "只读快照（读取报告已产出的 CSV），不触发数据更新 / 不重新计算。"
-        f" as-of 快照日：**{state.snapshot_date or '（未记录）'}**，四面板同一天对齐。"
+        f" as-of 快照日：**{state.snapshot_date or '（未记录）'}**。"
     )
     if state.regime:
         st.markdown(f"#### 宏观 Regime：**{state.regime}**")
@@ -307,6 +307,27 @@ def main() -> None:
         state = loader.load_dashboard()
     except FileNotFoundError as exc:
         st.error(str(exc))
+        return
+
+    aligned, alignment_gaps, snapshot_dates = loader.same_day_alignment(state)
+    if not aligned:
+        detail = []
+        if alignment_gaps:
+            detail.append("缺少 snapshot_date：" + ", ".join(alignment_gaps))
+        if len(snapshot_dates) > 1:
+            detail.append("发现多个快照日：" + ", ".join(sorted(snapshot_dates)))
+        st.error("快照未通过同日对齐门，页面已阻断；" + "；".join(detail))
+        return
+
+    synthetic = loader.synthetic_rows(state)
+    if synthetic:
+        st.warning(
+            "检测到非真实数据，相关信号已明确降级展示（不得视为真实数据）："
+            + ", ".join(synthetic)
+        )
+    redline_hits = loader.forbidden_words(state)
+    if redline_hits:
+        st.error("检测到红线词，页面已阻断：" + "；".join(redline_hits))
         return
 
     if state.snapshot_date:

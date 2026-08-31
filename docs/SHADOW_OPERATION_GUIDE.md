@@ -37,10 +37,19 @@ Review 统一评估，负责人批准后才在**新窗口**执行。
 - **只读**：复用 validation 冻结机制（`allow_synthetic=False`），读 V2/V1.5 冻结输出 +
   canonical，绝不写 canonical、绝不改阈值（阈值从 `assets.yaml` 读取 = 0.15）。
 - **面板**：月度 PIT 资产分数 → 声明 View（tailwind / headwind / neutral）。
+- **日期语义**：`decision_date` 是分数所属的月末/季末**期间标签**，不是脚本
+  实际运行时间；`as_of` 才是本次实际决策/运行时点。开放月份或季度的标签不得
+  晚于 `as_of`，否则 replay gate 必须 fail-closed（例如 `as_of=2026-09-01`
+  不能记录 `decision_date=2026-09-30`）。
 - **命中规则**：仅统计非中性 View；`hit = sign(score) == sign(fwd)`（tailwind 期待正、
   headwind 期待负），中性不构成方向声明、不计入。
-- **输出**：`data/local/shadow/shadow_metrics.csv`（按 date×asset 追加去重；前向收益
-  随市场推进而刷新，首见日期 asof 保留）；每次运行打印近 N 个月命中率摘要。
+- **输出**：决策与结果严格分离：`data/local/shadow/decision_snapshots.csv` 只保存
+  `snapshot_id`、决策日、asset/score/view、as-of、配置/数据/git hash 与运行时元数据；
+  `data/local/shadow/outcome_observations.csv` 只保存通过 `snapshot_id` 单向关联的、
+  后续到达的 1m/3m 观察。两侧均 append-only，不回写或刷新历史决策。
+- **验证**：`validate_decision_snapshots` 是只读 schema/replay gate；运行输出明确区分
+  `snapshot_count`、`matured_1m_count`、`matured_3m_count`。这些是样本成熟度计数，
+  不代表收益评分、概率校准或统计显著性。
 - **诚实声明**：观察初期非中性 View 与已实现前向收益的样本极少，`hit_rate` 是
   **描述性指标**，非统计显著性；样本不足时如实显示（无强行结论）。
 
@@ -56,6 +65,27 @@ Review 统一评估，负责人批准后才在**新窗口**执行。
            - 逐项评估待决项（见 decision_journal）
            - 输出：是否模型升级 / Signal 精简 / 新功能（V5）的负责人决策
 ```
+
+## 4.1 首轮运行前人工输入（必须由负责人确认）
+
+脚本不会替负责人生成决策、补造结果或创建调度。首轮运行前只需完成以下人工确认，
+并把确认日期写入决策日志或运行记录：
+
+- 观察期起始日，以及本次 `--today` 的参考日（使用明确的 `YYYY-MM-DD`）；
+- 当前生产配置、真实数据源和代码版本均为负责人批准的冻结版本；synthetic、候选源
+  和未通过 promotion gate 的序列不纳入；
+- 本次运行的输出位置仍是 `data/local/shadow/` 下两份 append-only 文件，不能指向
+  canonical、`config/` 或其他业务快照；
+- 若已有 Shadow 文件，先确认其 schema/replay gate 为 PASS；门禁失败时停止并人工修复，
+  不覆盖历史记录。若历史文件含未来期间标签，保留为隔离的审计证据，并使用新的
+  `--snapshot-out` / `--out` 路径生成合格 run；不得删除、重写或把弃用文件与合格文件
+  混用；
+- 运行后核对 `snapshot_count`、`matured_1m_count`、`matured_3m_count` 与数据健康报告，
+  样本不足只记录为不足，不据此改模型或下收益结论。
+
+到期规则由程序执行：决策月末后的 1m/3m 月末尚未到达时，不写入对应 outcome；到期后
+才可观察。结果只能通过 `snapshot_id` 关联决策，不能把 forward return 或 hit 回写到
+决策快照。任何门禁失败均为 fail-closed：不继续写入本轮 Shadow 文件。
 
 ## 5. 观察期重点复核项（V4.6 遗留，数据到位后重检）
 

@@ -50,15 +50,27 @@ signals:
 
   S3:
     # S3 (Property Vulnerability) proxy pool (B-package archived 2026-08-30):
-    # four categories, equal-weight percentile composite on a quarterly index.
+    # four categories, equal-weight fragility-aligned percentile composite on
+    # a quarterly index. Negative means rising raw values are more fragile;
+    # positive means rising raw values are less fragile and are reversed.
     # Declared PRIORS, not fitted: percentile_window/trend_quarters anchor the
     # historical positioning; thresholds are percentile-of-own-history anchors
     # (composite is a 0..1 percentile), same convention as S2. 景气/杠杆 have
-    # real data this window (PARTIAL out of the four categories); 价格/资金 are
-    # registered Wind-manual/undelivered, reported honestly until they arrive.
+    # real data this window; 价格/资金 are now landed from the user-approved
+    # Wind candidates. The engine still uses only closed quarterly cutoffs.
     direction: negative           # rising composite percentile = more fragile
     percentile_window: 20         # ~5y of quarterly proxy observations
     trend_quarters: 4             # one-year trend of the composite
     thresholds:
       elevated_percentile: 0.80   # own-history percentile: composite fragile
       moderate_percentile: 0.50
+    # Price and developer funding are core confirmation dimensions: without
+    # both through the declared window, S3 cannot be READY.
+    required_inputs:
+      - CN_NEW_HOUSE_PRICE_YOY
+      - CN_PROPERTY_FUNDING_YOY
+    input_directions:
+      CN_REAL_ESTATE_CLIMATE: positive
+      CN_HOUSEHOLD_LEVERAGE: negative
+      CN_NEW_HOUSE_PRICE_YOY: positive
+      CN_PROPERTY_FUNDING_YOY: positive

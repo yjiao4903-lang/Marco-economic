@@ -75,6 +75,10 @@ class StructuralReading:
     percentile_window: int = 0
     freshness_days: Optional[int] = None
     stale: bool = False
+    # S3: agents whose own latest closed-quarter observation breaches its
+    # declared budget.  A composite must not hide these behind another
+    # agent's looser budget.
+    stale_series_ids: list[str] = field(default_factory=list)
     # diagnostic label from the declared thresholds (READY only)
     diagnostic: Optional[str] = None
     message: str = ""
@@ -222,11 +226,32 @@ def compute_structural_readings(
 
         # ---------------------------------------------------- multi-input proxy pool (S3)
         # Each proxy is positioned against its own history as a rolling
-        # percentile (common 0..1 scale for heterogeneous units), resampled to a
-        # quarterly index, then the AVAILABLE proxies are averaged (equal-weight
-        # declared prior, never an Asset Score input). Missing categories leave
-        # the composite PARTIAL - never a synthetic fill.
-        available_id = [sid for sid in (i.series_id for i in inputs) if _clean(sid) is not None]
+        # percentile (common 0..1 scale for heterogeneous units), aligned to
+        # rising fragility using the explicit input_directions map, resampled
+        # to a quarterly index, then averaged. Missing categories leave the
+        # composite PARTIAL - never a synthetic fill.
+        input_directions = cfg.get("input_directions") or {}
+        required_inputs = set(cfg.get("required_inputs") or ())
+        declared_ids = {i.series_id for i in inputs}
+        if set(input_directions) != declared_ids:
+            raise ValueError("S3 input_directions must cover every declared input")
+        if not required_inputs.issubset(declared_ids):
+            raise ValueError("S3 required_inputs must be declared S3 inputs")
+        # A monthly observation in the currently open quarter is not a
+        # usable S3 observation yet.  In particular, on 2026-08-31 July data
+        # must not be labelled 2026-09-30 by the quarter-end resampler.
+        today_end = today.normalize()
+        available_id = []
+        closed_series: dict[str, pd.Series] = {}
+        for sid in (i.series_id for i in inputs):
+            cleaned = _clean(sid)
+            if cleaned is None:
+                continue
+            closed = cleaned.resample("QE").last()
+            closed = closed[closed.index <= today_end]
+            if not closed.empty:
+                available_id.append(sid)
+                closed_series[sid] = closed
         reading = StructuralReading(
             signal_id=signal_id,
             series_id=", ".join(i.series_id for i in inputs),
@@ -252,11 +277,25 @@ def compute_structural_readings(
             continue  # MISSING_INPUT
 
         pool = {}
+        agent_freshness: dict[str, int] = {}
+        stale_series_ids: list[str] = []
         for sid in available_id:
             cleaned = _clean(sid)
             basis = apply_chain(cleaned, [dict(step) for step in spec.transforms])
             pct = rolling_percentile(basis, window=int(cfg["percentile_window"]))
-            pool[sid] = pct.rename(sid).to_frame().resample("QE").last()
+            # Structural direction convention: positive raw direction means
+            # rising values are less fragile, so reverse its percentile.
+            if input_directions[sid] == "positive":
+                pct = 1.0 - pct
+            quarterly_pct = pct.rename(sid).to_frame().resample("QE").last()
+            quarterly_pct = quarterly_pct[quarterly_pct.index <= today_end]
+            pool[sid] = quarterly_pct
+            latest_agent_date = closed_series[sid].index[-1]
+            agent_days = int((today_end - latest_agent_date).days)
+            agent_freshness[sid] = agent_days
+            budget = int(staleness.get(sid, DEFAULT_STALENESS_DAYS))
+            if agent_days > budget:
+                stale_series_ids.append(sid)
 
         composite = (
             pd.concat(list(pool.values()), axis=1).dropna(how="all").mean(axis=1, skipna=True)
@@ -267,12 +306,10 @@ def compute_structural_readings(
             reading.as_of = valid.index[-1]
             reading.history_start = valid.index[0]
             reading.freshness_days = int((today.normalize() - reading.as_of).days)
-            # composite is as fresh as its freshest available proxy; stale if
-            # the composite's latest quarter exceeds the loosest (max) budget.
-            max_budget = max(
-                int(staleness.get(sid, DEFAULT_STALENESS_DAYS)) for sid in available_id
-            )
-            reading.stale = reading.freshness_days > max_budget
+            # Freshness is constrained per proxy.  Do not let a climate or
+            # leverage budget mask a lagging price/funding candidate.
+            reading.stale_series_ids = stale_series_ids
+            reading.stale = bool(stale_series_ids)
             trend = apply_chain(
                 valid, [{"type": "delta", "periods": int(cfg["trend_quarters"])}]
             )
@@ -290,7 +327,14 @@ def compute_structural_readings(
         missing = [s for s in reading.series_ids if s not in available_id]
         if missing:
             reading.status = PARTIAL  # some categories have no data (honest)
-        elif reading.history_length >= reading.percentile_window:
+        elif (
+            reading.history_length >= reading.percentile_window
+            and required_inputs.issubset(available_id)
+            and all(
+                len(_clean(sid)) >= reading.percentile_window
+                for sid in required_inputs
+            )
+        ):
             reading.status = READY
         else:
             reading.status = WARMUP
@@ -310,8 +354,9 @@ def compute_structural_readings(
                 + (f"；{reading.message}" if reading.message else "")
             )
         if reading.stale:
-            reading.message = (
-                f"综合最新季度 {reading.as_of.date().isoformat()} 距今 "
-                f"{reading.freshness_days} 天 超过预算 {max_budget} 天"
+            details = "、".join(
+                f"{sid}（{agent_freshness[sid]}天>{int(staleness.get(sid, DEFAULT_STALENESS_DAYS))}天）"
+                for sid in stale_series_ids
             )
+            reading.message = f"代理最新闭合季度超过各自预算：{details}"
     return results

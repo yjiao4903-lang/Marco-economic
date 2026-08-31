@@ -15,6 +15,7 @@ from macro_compass.market.config import (
 )
 from macro_compass.market.engine import (
     MarketConfirmation,
+    STALE,
     classify_divergence,
     compute_market_confirmations,
     compute_market_metrics,
@@ -24,6 +25,7 @@ __all__ = [
     "DIVERGENCE_STATES",
     "MarketConfigError",
     "MarketConfirmation",
+    "STALE",
     "classify_divergence",
     "compute_market_confirmations",
     "compute_market_metrics",

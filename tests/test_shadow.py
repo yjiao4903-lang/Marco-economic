@@ -22,6 +22,13 @@ from macro_compass.shadow.metrics import (
     realized_frame,
     upsert_snapshot,
     view_of,
+    decision_snapshot_frame,
+    outcome_observation_frame,
+    validate_decision_snapshots,
+    maturity_counts,
+    DECISION_SNAPSHOT_COLUMNS,
+    OUTCOME_OBSERVATION_COLUMNS,
+    replay_gate,
 )
 
 
@@ -156,3 +163,65 @@ def test_upsert_appends_and_refreshes(tmp_path):
     assert row["fwd_3m"] == pytest.approx(0.02)
     assert row["hit_3m"] is True
     assert str(row["asof"]) == "2024-03-01"
+
+
+def test_governed_storage_separates_decisions_and_outcomes():
+    idx = _month_ends("2024-01-01", "2024-01-01")
+    scores = pd.DataFrame({"A": [0.30]}, index=idx)
+    cov = pd.DataFrame({"A": [1.0]}, index=idx)
+    fwd = {"A": pd.DataFrame({"fwd_1m": [0.01], "fwd_3m": [0.03]}, index=idx)}
+    decisions = decision_snapshot_frame(scores, cov, as_of="2024-02-01",
+                                        config_hash="c", data_hash="d", git_hash_value="g")
+    assert list(decisions.columns) == DECISION_SNAPSHOT_COLUMNS
+    assert not (set(decisions.columns) & {"fwd_1m", "fwd_3m", "forward_return", "hit_1m"})
+    assert validate_decision_snapshots(decisions)["valid"]
+    outcomes = outcome_observation_frame(decisions, fwd, observed_as_of="2024-05-01")
+    assert list(outcomes.columns) == OUTCOME_OBSERVATION_COLUMNS
+    assert set(outcomes["snapshot_id"]) == set(decisions["snapshot_id"])
+    assert maturity_counts(decisions, outcomes) == {
+        "snapshot_count": 1, "matured_1m_count": 1, "matured_3m_count": 1,
+    }
+    assert replay_gate(decisions, outcomes)["valid"]
+    bad = decisions.assign(forward_return=0.1)
+    assert not validate_decision_snapshots(bad)["valid"]
+
+
+def test_decision_snapshot_generation_excludes_future_period_labels():
+    idx = pd.to_datetime(["2026-08-31", "2026-09-30"])
+    scores = pd.DataFrame({"A": [0.30, 0.40]}, index=idx)
+    cov = pd.DataFrame({"A": [1.0, 1.0]}, index=idx)
+    decisions = decision_snapshot_frame(scores, cov, as_of="2026-09-01")
+    assert set(decisions["decision_date"]) == {"2026-08-31"}
+
+
+def test_replay_gate_rejects_future_decision_relative_to_recorded_as_of():
+    idx = pd.to_datetime(["2026-09-30"])
+    decisions = decision_snapshot_frame(
+        pd.DataFrame({"A": [0.30]}, index=idx),
+        pd.DataFrame({"A": [1.0]}, index=idx),
+        as_of="2026-09-30",
+    )
+    bad = decisions.assign(as_of="2026-09-01")
+    result = replay_gate(bad)
+    assert not result["valid"]
+    assert result["future_decision_count"] == 1
+
+
+def test_outcomes_are_withheld_until_horizon_matures():
+    idx = _month_ends("2024-01-01", "2024-01-01")
+    scores = pd.DataFrame({"A": [0.30]}, index=idx)
+    cov = pd.DataFrame({"A": [1.0]}, index=idx)
+    fwd = {"A": pd.DataFrame({"fwd_1m": [0.01], "fwd_3m": [0.03]}, index=idx)}
+    decisions = decision_snapshot_frame(scores, cov, as_of="2024-01-31")
+    early = outcome_observation_frame(decisions, fwd, observed_as_of="2024-02-29")
+    assert set(early["horizon"]) == {"1m"}
+    late = outcome_observation_frame(decisions, fwd, observed_as_of="2024-04-30")
+    assert set(late["horizon"]) == {"1m", "3m"}
+
+
+def test_replay_gate_rejects_malformed_outcome_schema():
+    decisions = pd.DataFrame(columns=DECISION_SNAPSHOT_COLUMNS)
+    outcomes = pd.DataFrame(columns=["outcome_id", "snapshot_id", "horizon"])
+    result = replay_gate(decisions, outcomes)
+    assert not result["valid"]
+    assert "forward_return" in result["missing_outcome_fields"]

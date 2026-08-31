@@ -57,6 +57,7 @@ from macro_compass.transforms.stats import rolling_percentile
 MISSING_INPUT = "MISSING_INPUT"  # no canonical data for the declared series
 READY = "READY"                  # every declared metric computable
 WARMUP = "WARMUP"                # real data present, declared window not met
+STALE = "STALE"                  # latest observation exceeds freshness budget
 
 # divergence fields are filled by classify_divergence (Phase 3)
 
@@ -67,7 +68,7 @@ class MarketConfirmation:
 
     signal_id: str
     series_id: str
-    status: str  # READY / WARMUP / MISSING_INPUT
+    status: str  # READY / WARMUP / STALE / MISSING_INPUT
     direction: str  # rising-series convention from market.yaml
     as_of: Optional[pd.Timestamp] = None
     history_start: Optional[pd.Timestamp] = None
@@ -289,6 +290,19 @@ def compute_market_confirmations(
     )
     classify_divergence(metrics, factor_results, market_config)
     for result in metrics.values():
+        budget = int(staleness.get(result.series_id, (macro_config.get("confidence") or {}).get(
+            "default_max_staleness_days", 90
+        )))
+        result.stale = (
+            result.freshness_days is not None and result.freshness_days > budget
+        )
+        if result.stale:
+            # Stale observations are not a usable market confirmation. Keep
+            # the raw metrics for audit, but prevent them from acting READY.
+            result.status = STALE
+            result.market_direction = 0
+            result.state = MIXED
+            result.agreement = None
         result.confidence = _confidence(result, staleness, macro_config)
     return metrics
 

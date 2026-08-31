@@ -320,6 +320,8 @@ signals:
     mechanism: >
       Government bond financing growth is the fiscal impulse: how actively the
       government leverages to support demand, independent of private credit.
+      The input is monthly net government-bond financing (flow), not the
+      cumulative or outstanding stock.
     inputs:
       - series_id: CN_GOV_BOND_FINANCING
         role: level
@@ -516,8 +518,9 @@ signals:
       Score. Pool composition and routing archived in
       docs/research/2026-08-30_bpack_structural_survey.md; 景气/杠杆 land with
       real data this window (auto source), 价格/资金 are registered but
-      Wind-manual / undelivered, so the composite honestly reports PARTIAL
-      until their data arrives (never a synthetic fill).
+      Wind-manual inputs are now landed from user-approved candidates; the
+      composite uses only closed-quarter observations and preserves any
+      source-level missing months (never a synthetic fill).
     inputs:
       - series_id: CN_REAL_ESTATE_CLIMATE
         role: component

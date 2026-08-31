@@ -17,6 +17,17 @@ from macro_compass.shadow.metrics import (
     realized_frame,
     upsert_snapshot,
     view_of,
+    DECISION_SNAPSHOT_COLUMNS,
+    OUTCOME_OBSERVATION_COLUMNS,
+    append_unique,
+    content_hash,
+    decision_snapshot_frame,
+    git_hash,
+    maturity_counts,
+    outcome_observation_frame,
+    runtime_metadata,
+    validate_decision_snapshots,
+    replay_gate,
 )
 
 __all__ = [
@@ -28,4 +39,15 @@ __all__ = [
     "realized_frame",
     "upsert_snapshot",
     "view_of",
+    "DECISION_SNAPSHOT_COLUMNS",
+    "OUTCOME_OBSERVATION_COLUMNS",
+    "append_unique",
+    "content_hash",
+    "decision_snapshot_frame",
+    "git_hash",
+    "maturity_counts",
+    "outcome_observation_frame",
+    "runtime_metadata",
+    "validate_decision_snapshots",
+    "replay_gate",
 ]

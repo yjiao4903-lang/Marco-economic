@@ -41,24 +41,30 @@ def test_cumulative_year_resets_to_first_period_flow() -> None:
     dates, flows = cumulative_to_monthly(
         [11, 12, 1, 2], [2025, 2025, 2026, 2026], [100.0, 150.0, 40.0, 90.0]
     )
-    assert [f for _, f in zip(dates, flows)] == [100.0, 50.0, 40.0, 50.0]
-    assert dates[0].month == 11 and dates[-1].month == 2
+    assert flows == [50.0, 50.0]
+    assert [d.month for d in dates] == [12, 2]
 
 
 def test_cumulative_jan_feb_combined_release_is_one_flow() -> None:
     # NBS reports 1-2月 combined: the February cumulative IS the period flow
     dates, flows = cumulative_to_monthly([2, 3], [2026, 2026], [80.0, 130.0])
-    assert flows == [80.0, 50.0]
-    assert dates[0].month == 2
+    assert flows == [50.0]
+    assert dates[0].month == 3
 
 
 def test_cumulative_missing_month_not_zero_filled() -> None:
     dates, flows = cumulative_to_monthly(
         [1, 3], [2026, 2026], [10.0, 40.0]  # February missing entirely
     )
-    # March cumulative after a gap restarts the chain: cannot be split
-    assert [d.month for d in dates] == [1, 3]
-    assert flows == [10.0, 30.0]
+    # Neither first point nor March after a missing February is a monthly flow.
+    assert dates == []
+    assert flows == []
+
+
+def test_cumulative_chain_resumes_after_gap_with_new_consecutive_pair() -> None:
+    dates, flows = cumulative_to_monthly([1, 3, 4], [2026, 2026, 2026], [10.0, 40.0, 55.0])
+    assert [d.month for d in dates] == [4]
+    assert flows == [15.0]
 
 
 def test_cumulative_revision_wins_and_negative_flow_kept() -> None:
@@ -66,7 +72,7 @@ def test_cumulative_revision_wins_and_negative_flow_kept() -> None:
     dates, flows = cumulative_to_monthly(
         [2, 2, 3], [2026, 2026, 2026], [100.0, 90.0, 85.0]
     )
-    assert flows == [90.0, -5.0]
+    assert flows == [-5.0]
 
 
 # --- provider parsers -------------------------------------------------------------

@@ -53,6 +53,27 @@ def load_structural_config(path: Path) -> dict:
             # A placeholder (S3 until the B-package proxy pool lands) carries
             # no priors yet - only the direction convention stays mandatory.
             continue
+        if signal_id == "S3":
+            directions = spec.get("input_directions")
+            required = spec.get("required_inputs")
+            if not isinstance(directions, dict) or not directions:
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' must declare non-empty input_directions"
+                )
+            if not isinstance(required, list) or not required:
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' must declare non-empty required_inputs"
+                )
+            if any(value not in DIRECTIONS for value in directions.values()):
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' input_directions values must be "
+                    f"in {DIRECTIONS}"
+                )
+            if any(item not in directions for item in required):
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' required_inputs must be covered by "
+                    "input_directions"
+                )
         for key in ("percentile_window", "trend_quarters"):
             value = spec.get(key)
             if not isinstance(value, int) or value < 1:

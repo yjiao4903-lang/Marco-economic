@@ -36,7 +36,10 @@ from macro_compass.assets import load_asset_config  # noqa: E402
 from macro_compass.signals import load_core_computations, load_signal_registry  # noqa: E402
 from macro_compass.macro.config import CORE_FACTORS  # noqa: E402
 from macro_compass.validation import assemble  # noqa: E402
-from macro_compass.shadow import hit_summary, realized_frame, upsert_snapshot  # noqa: E402
+from macro_compass.shadow import (  # noqa: E402
+    content_hash, decision_snapshot_frame, outcome_observation_frame,
+    append_unique, maturity_counts, runtime_metadata, git_hash, replay_gate,
+)
 
 
 def main() -> None:
@@ -50,10 +53,10 @@ def main() -> None:
         "--horizon", default="3m", choices=["1m", "3m"],
         help="forward horizon for the hit summary (default: 3m)",
     )
-    parser.add_argument(
-        "--out", default=str(paths.LOCAL_DIR / "shadow" / "shadow_metrics.csv"),
-        help="append-only snapshot CSV path (default: data/local/shadow/shadow_metrics.csv)",
-    )
+    parser.add_argument("--snapshot-out", default=str(paths.LOCAL_DIR / "shadow" / "decision_snapshots.csv"),
+                        help="append-only decision snapshot CSV")
+    parser.add_argument("--out", default=str(paths.LOCAL_DIR / "shadow" / "outcome_observations.csv"),
+                        help="append-only outcome observation CSV")
     args = parser.parse_args()
     today = pd.Timestamp(args.today) if args.today else pd.Timestamp.today()
     threshold = float(load_asset_config(paths.ASSETS_YAML)["defaults"]["view_threshold"])
@@ -78,44 +81,55 @@ def main() -> None:
         assets_config, snapshot.series, today,
     )
 
-    frame = realized_frame(
-        sample.asset_scores, sample.forward_returns, sample.asset_coverage,
-        threshold=threshold,
+    decisions = decision_snapshot_frame(
+        sample.asset_scores, sample.asset_coverage, threshold=threshold, as_of=today,
+        config_hash=content_hash(assets_config), data_hash=content_hash(sample.asset_scores),
+        git_hash_value=git_hash(PROJECT_ROOT), runtime_metadata_value=runtime_metadata(),
     )
-    if frame.empty:
+    if decisions.empty:
         print("no scored (date, asset) rows - nothing to record")
         return
 
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    merged = upsert_snapshot(out_path, frame, today)
-    merged.to_csv(out_path, index=False, encoding="utf-8-sig")
+    outcomes = outcome_observation_frame(decisions, sample.forward_returns, observed_as_of=today)
+    snapshot_path = Path(args.snapshot_out)
+    outcome_path = Path(args.out)
+    # Fail closed before any write: existing files are treated as persisted
+    # evidence, and a malformed/entangled file must be repaired manually.
+    existing_decisions = (pd.read_csv(snapshot_path)
+                          if snapshot_path.exists()
+                          else pd.DataFrame(columns=decisions.columns))
+    existing_outcomes = (pd.read_csv(outcome_path)
+                         if outcome_path.exists()
+                         else pd.DataFrame(columns=outcomes.columns))
+    preflight = replay_gate(existing_decisions, existing_outcomes)
+    if not preflight["valid"]:
+        raise RuntimeError(f"Shadow replay gate failed before write: {preflight}")
+    candidate_gate = replay_gate(
+        pd.concat([existing_decisions, decisions], ignore_index=True),
+        pd.concat([existing_outcomes, outcomes], ignore_index=True),
+    )
+    if not candidate_gate["valid"]:
+        raise RuntimeError(f"Shadow replay gate failed for candidate run: {candidate_gate}")
+    merged_decisions = append_unique(snapshot_path, decisions, "snapshot_id")
+    merged_outcomes = append_unique(outcome_path, outcomes, "outcome_id")
 
     # trailing-window subset for the summary (keyed on scoring date)
     lo = today.normalize() - pd.DateOffset(months=int(args.window))
-    recent = frame[pd.to_datetime(frame["date"]) >= lo]
-    summary = hit_summary(recent, horizon=args.horizon)
-
     print(f"=== Shadow Operation metrics - generated {today.date()} ===")
     print("isolation: reads frozen V2/V1.5 outputs + canonical; no modification;")
     print("no synthetic; no tuning; threshold read from assets.yaml = "
           f"{threshold:g}; no Core change (decisions only via decision_journal).")
     print(f"\npanel: {sample.factor_panel.index.min().date()} -> "
           f"{sample.factor_panel.index.max().date()} (month-ends, PIT); "
-          f"scored (date x asset) rows this run = {len(frame)}; "
+          f"decision snapshots this run = {len(decisions)}; "
           f"summary window = trailing {args.window}m (>= {lo.date()})")
-
-    print(f"\n--- Directional hit-rate vs realized {args.horizon} fwd "
-          "(non-neutral views only) ---")
-    if summary.empty:
-        print("  (no non-neutral view with a realized forward return yet - "
-              "normal early in the observation phase)")
-    else:
-        print(summary.to_string(index=False))
-
-    n_rec = len(merged)
-    print(f"\nWritten: {out_path} (total rows {n_rec}, keyed date x asset; "
-          "existing rows refreshed when fwd becomes available)")
+    counts = maturity_counts(merged_decisions, merged_outcomes)
+    gate = replay_gate(merged_decisions, merged_outcomes)
+    print(f"Replay gate: {'PASS' if gate['valid'] else 'FAIL'}")
+    print(f"\nGovernance counts: snapshot_count={counts['snapshot_count']}; "
+          f"matured_1m_count={counts['matured_1m_count']}; matured_3m_count={counts['matured_3m_count']}")
+    print(f"Written decisions: {snapshot_path} (append-only, total {len(merged_decisions)})")
+    print(f"Written outcomes: {outcome_path} (append-only, total {len(merged_outcomes)})")
     print("\nRead-only monitor - canonical / asset outputs were not modified.")
 
 

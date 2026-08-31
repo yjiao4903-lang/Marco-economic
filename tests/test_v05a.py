@@ -359,6 +359,32 @@ def test_market_confidence_components(registry, market_config, macro_config) -> 
     )
 
 
+def test_market_stale_is_explicit_status_and_not_confirmation(
+    registry, market_config, macro_config
+) -> None:
+    from macro_compass.market import compute_market_confirmations
+
+    today = pd.Timestamp("2026-08-29")
+    # Deliberately end the observation history before the 7-day budget.
+    series = {
+        "CSI300": pd.Series(
+            [3000.0 + 3.0 * i for i in range(300)],
+            index=pd.date_range("2025-01-01", periods=300, freq="D"),
+        )
+    }
+    results = compute_market_confirmations(
+        registry, market_config, series,
+        {"growth": _Factor(0.40)},
+        staleness={"CSI300": 7}, macro_config=macro_config, today=today,
+    )
+    result = results["M1"]
+    assert result.stale is True
+    assert result.status == "STALE"
+    assert result.market_direction == 0
+    assert result.state == "MIXED"
+    assert result.agreement is None
+
+
 def test_market_layer_cannot_modify_fundamental_outputs(
     registry, market_config, macro_config
 ) -> None:
