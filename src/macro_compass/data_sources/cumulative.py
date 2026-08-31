@@ -6,9 +6,9 @@ single-period flows, so cumulative inputs must be converted BEFORE they are
 stored as canonical series. The conversion is explicit and fixture-tested:
 
 * within a calendar year, month t flow = cumulative(t) - cumulative(t-1);
-* January (or the first reported month) flow = cumulative itself;
-* the Jan-Feb combined release (NBS convention) reports the cumulative
-  through February - it is treated as the first observation of the year;
+* a first reported period has no defensible monthly flow and is omitted;
+* the Jan-Feb combined release (NBS convention) can be used as a baseline,
+  but is not itself emitted as a monthly flow;
 * a cumulative value SMALLER than its predecessor (revision or rounding)
   yields a negative flow, which is kept as-is: revisions must not be
   silently dropped (no silent fallback);
@@ -30,8 +30,8 @@ def cumulative_to_monthly(
     """Convert year-to-date cumulative values to single-month flows.
 
     Returns (dates, monthly_values) sorted by date; dates are month-end
-    timestamps. Values that cannot be converted (first month of a year with
-    no prior year end value, missing months, None cumulative) are skipped.
+    timestamps. Values that cannot be converted (first reported period of a
+    year, an interrupted predecessor, or None cumulative) are skipped.
     """
     if not (len(months) == len(years) == len(cumulative)):
         raise ValueError("months/years/cumulative must have equal length")
@@ -49,17 +49,17 @@ def cumulative_to_monthly(
     prev_cum: float | None = None
     for year, month in periods:
         value = by_period[(year, month)]
-        if value is None:
-            # missing cumulative: cannot convert; the chain restarts here
-            prev_key, prev_cum = (year, month), None
-            continue
-        if prev_key is not None and prev_cum is not None and prev_key[0] == year:
-            flow = value - prev_cum
-        else:
-            # first reported period of a year (or after a gap): the
-            # cumulative IS the period flow (Jan / Jan-Feb combined release)
-            flow = value
-        dates.append(pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0))
-        flows.append(float(flow))
+        consecutive = (
+            prev_key is not None
+            and prev_cum is not None
+            and value is not None
+            and prev_key[0] == year
+            and prev_key[1] + 1 == month
+        )
+        if consecutive:
+            dates.append(pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0))
+            flows.append(float(value - prev_cum))
+        # Retain each observed cumulative as a possible baseline, but never
+        # emit it as a flow without a consecutive predecessor.
         prev_key, prev_cum = (year, month), value
     return dates, flows

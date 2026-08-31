@@ -83,6 +83,18 @@ def normalize_to_canonical(
             continue
         raw_values = pd.to_numeric(df[column], errors="coerce")
         report.unparseable_values += int((raw_values.isna() & df[column].notna()).sum())
+        raw_values = raw_values * column_meta.scale
+
+        series_name = column_meta.name or column_meta.series_id
+        audit_bits = []
+        if column_meta.wind_id:
+            audit_bits.append(f"Wind ID={column_meta.wind_id}")
+        if column_meta.raw_unit and column_meta.scale != 1.0:
+            audit_bits.append(f"raw_unit={column_meta.raw_unit}; scale={column_meta.scale}")
+        if column_meta.definition:
+            audit_bits.append(column_meta.definition)
+        if audit_bits:
+            series_name = f"{series_name} [{'; '.join(audit_bits)}]"
 
         part = pd.DataFrame(
             {
@@ -92,7 +104,7 @@ def normalize_to_canonical(
                 "source": source,
                 "source_file": source_file,
                 "import_time": import_time,
-                "series_name": column_meta.name or column_meta.series_id,
+                "series_name": series_name,
                 "unit": column_meta.unit or "",
                 "frequency": column_meta.frequency or "",
                 "category": column_meta.category,

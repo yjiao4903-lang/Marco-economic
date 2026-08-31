@@ -50,6 +50,10 @@ providers:
     module: pbc
     adapter_class: PbcAdapter
     timeout_seconds: 30
+    options:
+      # Candidate endpoint is intentionally unset: URL verification and
+      # download are an external acceptance step, not a production refresh.
+      annual_table_url: ""
   safe:
     module: safe
     adapter_class: SafeAdapter
@@ -247,6 +251,9 @@ series:
     original_source: >
       U.S. Treasury Daily Treasury Par Real Yield Curve, 10-year (percent).
       Fallback FRED DFII10 (validation/fallback only, same definition)
+    observation_start: "2003-01-02"
+    splice_policy: overlap_required
+    parser_contract: "Treasury yearly CSV -> MM/DD/YYYY, 10 YR percent; FRED overlap >= 60 trading days before merge"
 
   USD_BROAD:
     primary: fred
@@ -262,6 +269,9 @@ series:
       Fed broad trade-weighted USD index (Jan 2006 = 100). Primary FRED
       DTWEXBGS; fallback Fed H.10 release page (current week only - the DDP
       download program is being retired, so no long-term DDP dependency)
+    observation_start: "2006-01-02"
+    splice_policy: overlap_required
+    parser_contract: "FRED fredgraph CSV -> observation_date and DTWEXBGS index; H.10 fallback is not a historical splice"
     manual_instructions: >
       Download DTWEXBGS from fred.stlouisfed.org (CSV) or export from Wind and
       run python scripts/import_wind.py <file>
@@ -274,6 +284,20 @@ series:
     category: macro
     max_staleness_days: 45
     original_source: PBOC monthly LPR announcement
+    observation_start: "2019-08-20"
+    splice_policy: forbid
+    parser_contract: "PBOC LPR announcement HTML -> announcement_date and LPR_1Y percent"
+
+  CN_LPR_5Y:
+    primary: pbc
+    provider_code: "LPR_5Y"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    original_source: PBOC monthly LPR announcement
+    observation_start: "2019-08-20"
+    splice_policy: forbid
+    parser_contract: "PBOC LPR announcement HTML -> announcement_date and LPR_5Y percent"
 
   # --- NBS news-release parsing (V1.2C, P2) -------------------------------
   CHN_PMI_NEW_ORDERS:
@@ -286,6 +310,9 @@ series:
     freshness:
       expected_release_lag_days: 31   # published on the reference month's last day
     original_source: NBS manufacturing PMI new orders (news release)
+    observation_start: "2005-01-31"
+    splice_policy: forbid
+    parser_contract: "NBS PMI release HTML -> reference month and new-orders diffusion index"
     manual_instructions: >
       Export PMI new orders (PMI:新订单) from Wind to data/inbox/wind/, add the
       column to config/wind_mapping.yaml, then run
@@ -315,6 +342,9 @@ series:
       expected_release_lag_days: 31
     original_source: NBS PMI raw-material input-price index, 13-month table in
       the monthly PMI release (news release)
+    observation_start: "2005-01-31"
+    splice_policy: forbid
+    parser_contract: "NBS PMI release HTML -> reference month and raw-material input-price diffusion index"
 
   CN_CORE_CPI_YOY:
     primary: nbs
@@ -326,6 +356,40 @@ series:
     freshness:
       expected_release_lag_days: 11   # CPI released on the 9th-11th
     original_source: NBS core CPI YoY from the monthly CPI release/interpretation
+    observation_start: "1993-01-01"
+    splice_policy: forbid
+    parser_contract: "NBS CPI release HTML -> reference_month and core CPI YoY percent; headline is not interchangeable"
+
+  # Annual PBOC table is an archival candidate for historical coverage.  It is
+  # deliberately a separate annual series: no automatic conversion or splice
+  # into the monthly D2/D4 legs is permitted.
+  CN_TSF_TOTAL_ANNUAL:
+    primary: pbc
+    provider_code: "TSF_TOTAL_ANNUAL"
+    frequency: yearly
+    category: macro
+    # Candidate only until the annual endpoint is verified; do not include in
+    # the default full refresh.
+    enabled: false
+    max_staleness_days: 450
+    original_source: PBOC annual social-financing statistical table
+    observation_start: "2011-01-01"
+    splice_policy: forbid
+    parser_contract: "PBOC annual table HTML/CSV -> calendar year-end and annual TSF increment in 亿元, adapted to bn_cny"
+
+  CN_GOV_BOND_FINANCING_ANNUAL:
+    primary: pbc
+    provider_code: "GOV_BOND_FINANCING_ANNUAL"
+    frequency: yearly
+    category: macro
+    # Candidate only until the annual endpoint is verified; do not include in
+    # the default full refresh.
+    enabled: false
+    max_staleness_days: 450
+    original_source: PBOC annual social-financing statistical table
+    observation_start: "2011-01-01"
+    splice_policy: forbid
+    parser_contract: "PBOC annual table HTML/CSV -> calendar year-end and annual government-bond net financing in 亿元, adapted to bn_cny"
 
   CN_PROPERTY_SALES_AREA:
     primary: nbs
@@ -630,9 +694,8 @@ series:
   #     structural_survey.md) ------------------------------------------------
   # Structural diagnostics ONLY - never enter the short-term Asset Score.
   # 景气/杠杆 endpoints auto-fetched (AKShare access layer, verified 2026-08-30);
-  # 价格/资金 registered but Wind manual (no auto route this window - price is
-  # a per-city panel with a broken BASE fill, funding reports do not exist at
-  # eastmoney). Manual routes keep the MANUAL_REQUIRED semantic.
+  # 价格/资金 are Wind-manual and now landed; manual routes retain explicit
+  # provenance and do not imply automatic refresh.
   CN_REAL_ESTATE_CLIMATE:
     primary: akshare
     fallback: wind_manual
@@ -682,12 +745,11 @@ series:
     category: macro
     max_staleness_days: 120
     original_source: >
-      70城新建商品住宅销售价格指数同比 (New-commodity-home price index YoY).
-      S3 价格端代理. Eastmoney RPT_ECONOMY_HOUSE_PRICE is reachable (latest
-      2026-07) but it is a per-city panel and BASE (定基) is only partially
-      filled from 2022-12 (84/187) - a national YoY proxy needs an explicit
-      city-pooling口径 decision (not in this window), so the series is routed
-      Wind manual and reports no data until imported. Never enters the
+      Wind S2707411, 70城新建商品住宅价格同比 (New-commodity-home price
+      index YoY), monthly percent. User-approved full replacement of the
+      Wind candidate on 2026-08-31; source, unit and frequency are retained
+      in canonical provenance. S3 consumes only closed quarters (latest
+      eligible month-end 2026-06-30 as of 2026-08-31); never enters the
       short-term Asset Score.
     manual_instructions: >
       Export 70城新建商品住宅销售价格指数:当月同比 (or a pooling you endorse)
@@ -699,11 +761,12 @@ series:
     category: macro
     max_staleness_days: 120
     original_source: >
-      房地产开发企业本年到位资金累计同比 (RE developer funding YTD YoY).
-      S3 资金端代理. eastmoney report config does not exist (code=9501,
-      Failed Attempts Log); NBS news-release parsing is feasible but the parser
-      is not built this window - series routed Wind manual, reports no data
-      until imported. Never enters the short-term Asset Score.
+      Wind S0073244, 房地产开发企业本年到位资金累计同比 (RE developer
+      funding YTD YoY), monthly percent. User-approved full replacement of
+      the Wind candidate on 2026-08-31; January is systematically absent in
+      the source and is retained as missing (no interpolation). S3 consumes
+      only closed quarters (latest eligible month-end 2026-06-30 as of
+      2026-08-31); never enters the short-term Asset Score.
     manual_instructions: >
       Export 房地产开发企业本年到位资金:累计同比 from Wind to data/inbox/wind/
       and run python scripts/import_wind.py <file>

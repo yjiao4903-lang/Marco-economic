@@ -20,7 +20,7 @@ CORE_FACTORS = ("growth", "inflation", "domestic_financial", "global_financial")
 LEGACY_FACTORS = ("rates", "credit", "liquidity", "fx")
 FACTORS = CORE_FACTORS + LEGACY_FACTORS
 DIRECTIONS = ("positive", "negative")
-FREQUENCIES = ("monthly", "weekly", "daily", "quarterly")
+FREQUENCIES = ("monthly", "weekly", "daily", "quarterly", "yearly")
 CATEGORIES = ("macro", "market")
 
 
@@ -54,7 +54,7 @@ class IndicatorConfig(BaseModel):
             "fx",
         ]
     ] = None
-    frequency: Literal["monthly", "weekly", "daily", "quarterly"]
+    frequency: Literal["monthly", "weekly", "daily", "quarterly", "yearly"]
     unit: str
     direction: Optional[Literal["positive", "negative"]] = None
     weight: float = Field(default=1.0, gt=0)
@@ -83,9 +83,15 @@ class MappingColumn(BaseModel):
 
     series_id: str
     category: Literal["macro", "market"] = "macro"
-    frequency: Optional[Literal["monthly", "weekly", "daily"]] = None
+    frequency: Optional[Literal["monthly", "weekly", "daily", "quarterly", "yearly"]] = None
     unit: Optional[str] = None
     name: Optional[str] = None
+    # Optional audit metadata for Wind manual exports. ``scale`` converts
+    # the raw Wind unit to the canonical unit (e.g. 亿元 -> bn_cny = 0.1).
+    scale: float = 1.0
+    raw_unit: Optional[str] = None
+    wind_id: Optional[str] = None
+    definition: Optional[str] = None
 
 
 class WindMapping(BaseModel):

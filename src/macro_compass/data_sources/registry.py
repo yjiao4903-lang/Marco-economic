@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from macro_compass.config import ConfigError
 from macro_compass.data_sources.base import DataSourceAdapter
 
-FREQUENCIES = ("monthly", "weekly", "daily", "quarterly")
+FREQUENCIES = ("monthly", "weekly", "daily", "quarterly", "yearly")
 CATEGORIES = ("macro", "market")
 
 
@@ -77,7 +77,7 @@ class SeriesSource(BaseModel):
     fallback: Optional[str] = None
     provider_code: str = ""
     fallback_code: str = ""
-    frequency: Literal["monthly", "weekly", "daily", "quarterly"]
+    frequency: Literal["monthly", "weekly", "daily", "quarterly", "yearly"]
     category: Literal["macro", "market"]
     max_staleness_days: int = Field(default=60, ge=1)
     original_source: str = ""
@@ -85,6 +85,11 @@ class SeriesSource(BaseModel):
     enabled: bool = True
     update_policy: UpdatePolicy = Field(default_factory=UpdatePolicy)
     freshness: FreshnessMeta = Field(default_factory=FreshnessMeta)
+    # Source-governance metadata.  These fields describe the contract for a
+    # future import; they do not make a source available or merge any rows.
+    observation_start: Optional[str] = None
+    splice_policy: Literal["forbid", "overlap_required", "same_definition"] = "forbid"
+    parser_contract: str = "canonical date,value rows"
 
 
 class DataSourcesConfig(BaseModel):

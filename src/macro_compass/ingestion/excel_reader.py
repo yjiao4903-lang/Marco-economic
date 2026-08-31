@@ -30,6 +30,14 @@ def read_excel_table(path, date_column: str) -> pd.DataFrame:
         raise ReadError(f"Excel file '{path}' has no data rows")
 
     header_row = _find_header_row(raw, date_column)
+    # Wind's localized metadata export labels the date column as
+    # ``指标名称`` in the first row; observation dates begin below the
+    # metadata rows.  Keep the configured canonical name (usually ``Date``)
+    # while accepting this well-defined Wind layout.
+    wind_metadata_date = False
+    if header_row is None:
+        header_row = _find_header_row(raw, "指标名称")
+        wind_metadata_date = header_row is not None
     if header_row is None:
         raise ReadError(
             f"Excel file '{path}': date column '{date_column}' not found in the first "
@@ -38,6 +46,8 @@ def read_excel_table(path, date_column: str) -> pd.DataFrame:
         )
 
     df = pd.read_excel(path, sheet_name=0, header=header_row, engine="openpyxl")
+    if wind_metadata_date and date_column not in df.columns and "指标名称" in df.columns:
+        df = df.rename(columns={"指标名称": date_column})
     df = df.dropna(how="all").reset_index(drop=True)
     return df
 

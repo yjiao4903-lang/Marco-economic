@@ -16,10 +16,16 @@ from macro_compass.data_sources.bis import parse_bis_flat_csv, period_to_quarter
 from macro_compass.data_sources.chicagofed import parse_nfci_csv
 from macro_compass.data_sources.chinabond import parse_yz_query
 from macro_compass.data_sources.chinamoney import parse_ccpr_json
-from macro_compass.data_sources.fred import parse_fred_csv
+from macro_compass.data_sources.fred import parse_fred_csv, parse_fred_observations_json
 from macro_compass.data_sources.nyfed import parse_ref_rates_json
 from macro_compass.data_sources.oecd import parse_sdmx_csv, period_to_date
-from macro_compass.data_sources.pbc import parse_lpr_announcement, parse_lpr_listing
+from macro_compass.data_sources.pbc import (
+    PbcAdapter,
+    parse_annual_tsf_table,
+    parse_lpr_announcement,
+    parse_lpr_listing,
+)
+from macro_compass.data_sources.registry import ProviderSpec, SeriesSource
 from macro_compass.data_sources.safe import parse_parity_links, parse_parity_table
 
 
@@ -30,6 +36,17 @@ def test_fred_parse_drops_missing_and_dots(fixture_file):
         date(2026, 8, 20), date(2026, 8, 21), date(2026, 8, 24),
     ]
     assert values == [2.05, 2.07, 2.03]
+
+
+def test_fred_api_parse_string_values_and_missing():
+    dates, values = parse_fred_observations_json(
+        '{"observations": [{"date": "2026-08-20", "value": "2.05"}, '
+        '{"date": "2026-08-21", "value": "."}, '
+        '{"date": "2026-08-24", "value": "2.03"}]}',
+        "DTWEXBGS",
+    )
+    assert dates == [date(2026, 8, 20), date(2026, 8, 24)]
+    assert values == [2.05, 2.03]
 
 
 def test_oecd_period_to_date_variants():
@@ -148,6 +165,66 @@ def test_pboc_listing_and_announcement_parse(fixture_file):
     ).read_text(encoding="utf-8")
     rates = parse_lpr_announcement(announcement)
     assert rates == {"LPR_1Y": 3.00, "LPR_5Y": 3.50}
+
+
+def test_pboc_annual_tsf_table_contract(fixture_file):
+    text = fixture_file("pboc_annual_tsf_sample.html").read_text(encoding="utf-8")
+    rows = parse_annual_tsf_table(text)
+    assert [row[0].date() for row in rows] == [date(2023, 12, 31), date(2024, 12, 31)]
+    assert [row[1:] for row in rows] == [(350000.0, 120000.0), (320000.0, 105000.0)]
+
+
+def test_pboc_annual_adapter_converts_yi_to_bn_cny(fixture_file, monkeypatch):
+    """Raw PBOC 亿元 values are adapted to the canonical bn_cny contract."""
+    text = fixture_file("pboc_annual_tsf_sample.html").read_text(encoding="utf-8")
+    provider = ProviderSpec(
+        module="pbc",
+        adapter_class="PbcAdapter",
+        options={"annual_table_url": "fixture://pboc-annual"},
+    )
+    series = SeriesSource(
+        primary="pbc",
+        provider_code="TSF_TOTAL_ANNUAL",
+        frequency="yearly",
+        category="macro",
+    )
+    monkeypatch.setattr("macro_compass.data_sources.pbc.http_get", lambda *args, **kwargs: text)
+    frame = PbcAdapter(provider, {"CN_TSF_TOTAL_ANNUAL": series}, provider_id="pbc").fetch(
+        "CN_TSF_TOTAL_ANNUAL"
+    )
+    assert frame["unit"].unique().tolist() == ["bn_cny"]
+    assert frame["value"].tolist() == [35000.0, 32000.0]
+
+
+def test_pboc_monthly_stats_converts_yi_to_bn_and_blocks_first_point(monkeypatch):
+    """Monthly PBOC flow is differenced first, then converted 亿元 -> bn_cny."""
+    provider = ProviderSpec(
+        module="pbc", adapter_class="PbcAdapter", options={"max_years": 0}
+    )
+    series = SeriesSource(
+        primary="pbc", provider_code="TSF_TOTAL", frequency="monthly", category="macro"
+    )
+    reports = {
+        "2026年4月金融统计数据报告": "前四个月社会融资规模增量累计为100亿元",
+        "2026年5月金融统计数据报告": "前五个月社会融资规模增量累计为130亿元",
+    }
+    monkeypatch.setattr(
+        "macro_compass.data_sources.pbc.http_get", lambda url, **kwargs: url
+    )
+    monkeypatch.setattr(
+        "macro_compass.data_sources.pbc.parse_stats_listing",
+        lambda html, base: [(title, text) for title, text in reports.items()],
+    )
+    monkeypatch.setattr(
+        "macro_compass.data_sources.pbc.re.sub",
+        lambda pattern, repl, text: reports.get(text, text),
+    )
+    frame = PbcAdapter(provider, {"CN_TSF_TOTAL": series}, provider_id="pbc").fetch(
+        "CN_TSF_TOTAL"
+    )
+    assert frame["unit"].unique().tolist() == ["bn_cny"]
+    assert frame["value"].tolist() == [3.0]
+    assert frame["date"].tolist() == [date(2026, 5, 31)]
 
 
 def test_safe_listing_and_table_parse(fixture_file):

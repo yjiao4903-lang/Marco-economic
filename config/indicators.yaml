@@ -91,11 +91,13 @@ CSI300:
   enabled: true
 
 GOLD:
-  name: 黄金现货
+  name: 伦敦黄金现货（月末）
   category: market
   frequency: monthly
-  unit: usd_per_oz
+  unit: usd_per_troy_oz
   enabled: true
+  definition: 伦敦市场黄金现货，USD/金衡盎司；每月最后可得交易日观测值
+  source: Wind S0031645
 
 # ---------------------------------------------------------------------------
 # V1.2 Multi-Source Acquisition: series fetched by public data providers.
@@ -172,8 +174,51 @@ CN_LPR_1Y:
   weight: 1.0
   enabled: true
 
+CN_LPR_5Y:
+  name: 5年期以上LPR
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: percent
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+CN_TSF_TOTAL_ANNUAL:
+  name: 社会融资规模增量(年度表)
+  category: macro
+  factor: domestic_financial
+  frequency: yearly
+  unit: bn_cny
+  direction: positive
+  weight: 1.0
+  # Archival/manual candidate only; endpoint is not verified yet.
+  enabled: false
+
+CN_GOV_BOND_FINANCING_ANNUAL:
+  name: 社融中的政府债券融资(年度表)
+  category: macro
+  factor: domestic_financial
+  frequency: yearly
+  unit: bn_cny
+  direction: positive
+  weight: 1.0
+  # Archival/manual candidate only; endpoint is not verified yet.
+  enabled: false
+
 US_REAL_YIELD_10Y:
   name: 美国10年期实际利率
+  category: macro
+  factor: global_financial
+  frequency: daily
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+# Independent Wind series; intentionally not referenced by signals/assets.
+US_TREASURY_NOMINAL_YIELD_10Y:
+  name: 美国10年期名义国债收益率
   category: macro
   factor: global_financial
   frequency: daily
@@ -398,7 +443,8 @@ CN_DSR:
 # --- V2.6 S3 proxy pool (B-package, docs/tasks/66; archived docs/research/
 #      2026-08-30_bpack_structural_survey.md). Property Vulnerability proxies,
 #      one per category (景气/杠杆/价格/资金). Auto-routed pairs feed the S3
-#      composite; price/funding are registered but Wind-manual (no data yet).
+#      composite; price/funding are Wind-manual and now landed from the
+#      user-approved candidates, with source-level missingness preserved.
 CN_REAL_ESTATE_CLIMATE:
   name: 国房景气指数
   category: macro
@@ -430,7 +476,7 @@ CN_NEW_HOUSE_PRICE_YOY:
   direction: negative
   weight: 1.0
   enabled: true
-  note: 价格端代理；东财可达但per-city面板+定基口径残缺，本轮Wind manual，无数据
+  note: 价格端代理；Wind S2707411（70城新建商品住宅价格同比），月度，percent；已由 Wind 候选全量升格。S3 仅使用已闭合季度（月末 2026-06-30 截止于 2026-08-31），不进入短期 Asset Score
 
 CN_PROPERTY_FUNDING_YOY:
   name: 房地产开发到位资金累计同比
@@ -441,4 +487,82 @@ CN_PROPERTY_FUNDING_YOY:
   direction: negative
   weight: 1.0
   enabled: true
-  note: 资金端代理；东财报表配置不存在，NBS新闻稿可解析未落地，本轮不可得/Wind manual
+  note: 资金端代理；Wind S0073244（房地产开发资金来源累计同比），月度，percent；已由 Wind 候选全量升格。每年 1 月系统性缺失按来源发布规则保留，不插值；S3 仅使用已闭合季度（月末 2026-06-30 截止于 2026-08-31），不进入短期 Asset Score
+
+# Wind C-G extension candidates (disabled and intentionally absent from all
+# signals/assets; S3 candidate IDs below are retired rollback aliases only).
+GOLD_LONDON_SPOT_USD_OZ_DAILY:
+  name: 伦敦黄金现货(美元/金衡盎司，Wind候选)
+  category: market
+  frequency: daily
+  unit: usd_per_troy_oz
+  enabled: false
+
+GOLD_LONDON_SPOT_USD_OZ_MONTHLY_CANDIDATE:
+  name: 伦敦黄金现货月末值(隔离候选)
+  category: market
+  frequency: monthly
+  unit: usd_per_troy_oz
+  enabled: false
+  note: 已于 2026-08-31 经负责人授权提升为 GOLD 生产来源；该 ID 保留为派生审计标识，生产行使用 series_id=GOLD
+
+CN_TSF_TOTAL_WIND_CANDIDATE:
+  name: 社会融资规模增量（月度流量，Wind候选）
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: bn_cny
+  direction: positive
+  enabled: false
+
+CN_GOV_BOND_FINANCING_WIND_CANDIDATE:
+  name: 社融政府债券融资(Wind候选)
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: bn_cny
+  direction: positive
+  enabled: false
+
+# PBC-reported cumulative-flow candidates (local audit only; never routed to
+# D2/D4 or signals). Values are differenced from 0.01-trillion-yuan report
+# figures, so they are not raw observations precise to 0.1 bn_cny.
+CN_TSF_TOTAL_PBC_REPORTED_CANDIDATE:
+  name: 社会融资规模增量（月度流量，PBC报告候选）
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: bn_cny
+  direction: positive
+  enabled: false
+  note: 本地审计候选；由PBC报告累计值差分，报告值分辨率为0.01万亿元，未接入D2/signals
+
+CN_GOV_BOND_FINANCING_PBC_REPORTED_CANDIDATE:
+  name: 社融政府债券净融资（月度流量，PBC报告候选）
+  category: macro
+  factor: domestic_financial
+  frequency: monthly
+  unit: bn_cny
+  direction: positive
+  enabled: false
+  note: 本地审计候选；由PBC报告累计值差分，报告值分辨率为0.01万亿元，未接入D4/signals
+
+CN_NEW_HOUSE_PRICE_YOY_WIND_CANDIDATE:
+  name: 70城新建商品住宅价格同比(Wind候选，已升格；仅回退)
+  category: macro
+  factor: credit
+  frequency: monthly
+  unit: percent
+  direction: negative
+  enabled: false
+  note: 已升格至 CN_NEW_HOUSE_PRICE_YOY；仅保留为回退标识，不是活跃输入
+
+CN_PROPERTY_FUNDING_YOY_WIND_CANDIDATE:
+  name: 房地产开发资金来源累计同比(Wind候选，已升格；仅回退)
+  category: macro
+  factor: credit
+  frequency: monthly
+  unit: percent
+  direction: negative
+  enabled: false
+  note: 已升格至 CN_PROPERTY_FUNDING_YOY；仅保留为回退标识，不是活跃输入；1月缺失不插值
