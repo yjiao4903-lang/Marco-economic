@@ -73,8 +73,8 @@ def load_structural_config(path: Path) -> dict:
                 )
             if not isinstance(fragility_directions, dict) or not fragility_directions:
                 raise StructuralConfigError(
-                    "structural.yaml: signal 'S3' must declare non-empty "
-                    "input_fragility_directions"
+                    "structural.yaml: signal 'S3' ambiguous positive/negative legacy labels "
+                    "are not sufficient; declare non-empty input_fragility_directions"
                 )
             if set(fragility_directions) != set(legacy_directions):
                 raise StructuralConfigError(
