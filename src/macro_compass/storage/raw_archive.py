@@ -4,6 +4,9 @@
 - The import manifest is an append-only parquet at ``data/raw/wind/import_manifest.parquet``;
   it survives DuckDB deletion and is used to rebuild the DuckDB manifest table.
 - Original files are archived under ``data/raw/wind/<year>/`` and never overwritten.
+- Import status is event-like: a hash is considered fully imported only when
+  its latest meaningful state is ``IMPORTED``. This allows safe recovery from
+  failures after canonical Parquet has already been written.
 """
 
 from __future__ import annotations
@@ -23,6 +26,9 @@ MANIFEST_COLUMNS = ["file_name", "sha256", "import_time", "rows", "status", "arc
 
 STATUS_IMPORTED = "IMPORTED"
 STATUS_SKIPPED = "SKIPPED_ALREADY_IMPORTED"
+STATUS_CANONICAL_WRITTEN = "CANONICAL_WRITTEN"
+STATUS_FAILED_POST_CANONICAL = "FAILED_POST_CANONICAL"
+
 
 
 def sha256_of_file(path: Path) -> str:
@@ -34,17 +40,39 @@ def sha256_of_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+
 def load_manifest() -> pd.DataFrame:
     if MANIFEST_PATH.exists():
         return pd.read_parquet(MANIFEST_PATH)
     return pd.DataFrame(columns=MANIFEST_COLUMNS)
 
 
-def is_hash_imported(file_hash: str) -> bool:
+
+def latest_hash_state(file_hash: str) -> pd.Series | None:
+    """Return the latest meaningful manifest event for ``file_hash``.
+
+    ``SKIPPED_ALREADY_IMPORTED`` is audit noise rather than a state transition,
+    so it is ignored when determining whether a file is complete or resumable.
+    Append order is authoritative; events from one import attempt can share the
+    same timestamp.
+    """
     manifest = load_manifest()
-    if manifest.empty:
-        return False
-    return bool((manifest["sha256"] == file_hash).any())
+    if manifest.empty or "sha256" not in manifest or "status" not in manifest:
+        return None
+    matching = manifest.loc[manifest["sha256"] == file_hash]
+    if matching.empty:
+        return None
+    meaningful = matching.loc[matching["status"] != STATUS_SKIPPED]
+    if meaningful.empty:
+        return matching.iloc[-1]
+    return meaningful.iloc[-1]
+
+
+
+def is_hash_imported(file_hash: str) -> bool:
+    state = latest_hash_state(file_hash)
+    return state is not None and str(state["status"]) == STATUS_IMPORTED
+
 
 
 def record_manifest(
@@ -74,6 +102,7 @@ def record_manifest(
     tmp = MANIFEST_PATH.with_suffix(".parquet.tmp")
     manifest.to_parquet(tmp, index=False)
     tmp.replace(MANIFEST_PATH)
+
 
 
 def archive_file(path: Path, import_time: datetime) -> Path:
