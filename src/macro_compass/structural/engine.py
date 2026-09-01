@@ -49,6 +49,9 @@ PARTIAL = "PARTIAL"              # proxy pool: some (not all) inputs have data
 # default staleness budget (days) when the series has no data_sources route
 DEFAULT_STALENESS_DAYS = 260
 
+S3_HIGHER_IS_MORE_FRAGILE = "higher_is_more_fragile"
+S3_LOWER_IS_MORE_FRAGILE = "lower_is_more_fragile"
+
 
 @dataclass
 class StructuralReading:
@@ -108,13 +111,30 @@ def _diagnostic(signal_id: str, thresholds: Mapping, level, percentile) -> Optio
         if level > float(thresholds.get("above_trend", 0.0)):
             return "ABOVE_TREND"
         return "BELOW_TREND"
-    if "elevated_percentile" in thresholds and percentile is not None:  # S2
+    if "elevated_percentile" in thresholds and percentile is not None:  # S2/S3
         if percentile >= float(thresholds["elevated_percentile"]):
             return "ELEVATED"
         if percentile >= float(thresholds.get("moderate_percentile", 0.5)):
             return "MODERATE"
         return "BENIGN"
     return None
+
+
+def _align_s3_percentile_to_fragility(percentile: pd.Series, direction: str) -> pd.Series:
+    """Return an S3 proxy percentile on the common fragility scale.
+
+    The output contract is always 0 = lower fragility and 1 = higher fragility.
+    No implicit sign inference is allowed; every S3 input must declare one of
+    the two explicit semantics in ``config/structural.yaml``.
+    """
+    if direction == S3_HIGHER_IS_MORE_FRAGILE:
+        return percentile
+    if direction == S3_LOWER_IS_MORE_FRAGILE:
+        return 1.0 - percentile
+    raise ValueError(
+        "S3 input direction must be 'higher_is_more_fragile' or "
+        f"'lower_is_more_fragile', got {direction!r}"
+    )
 
 
 def compute_structural_readings(
@@ -182,6 +202,7 @@ def compute_structural_readings(
             cleaned = _clean(series_id)
             if cleaned is None:
                 reading.message = f"无 canonical 数据：{series_id}"
+                reading.available_count = 0
                 continue  # MISSING_INPUT
 
             reading.as_of = cleaned.index[-1]
@@ -227,14 +248,16 @@ def compute_structural_readings(
         # ---------------------------------------------------- multi-input proxy pool (S3)
         # Each proxy is positioned against its own history as a rolling
         # percentile (common 0..1 scale for heterogeneous units), aligned to
-        # rising fragility using the explicit input_directions map, resampled
-        # to a quarterly index, then averaged. Missing categories leave the
-        # composite PARTIAL - never a synthetic fill.
-        input_directions = cfg.get("input_directions") or {}
+        # the explicit 0=lower fragility / 1=higher fragility convention,
+        # resampled to a quarterly index, then averaged. Missing categories
+        # leave the composite PARTIAL - never a synthetic fill.
+        fragility_directions = cfg.get("input_fragility_directions") or {}
         required_inputs = set(cfg.get("required_inputs") or ())
         declared_ids = {i.series_id for i in inputs}
-        if set(input_directions) != declared_ids:
-            raise ValueError("S3 input_directions must cover every declared input")
+        if set(fragility_directions) != declared_ids:
+            raise ValueError(
+                "S3 input_fragility_directions must cover every declared input"
+            )
         if not required_inputs.issubset(declared_ids):
             raise ValueError("S3 required_inputs must be declared S3 inputs")
         # A monthly observation in the currently open quarter is not a
@@ -283,10 +306,7 @@ def compute_structural_readings(
             cleaned = _clean(sid)
             basis = apply_chain(cleaned, [dict(step) for step in spec.transforms])
             pct = rolling_percentile(basis, window=int(cfg["percentile_window"]))
-            # Structural direction convention: positive raw direction means
-            # rising values are less fragile, so reverse its percentile.
-            if input_directions[sid] == "positive":
-                pct = 1.0 - pct
+            pct = _align_s3_percentile_to_fragility(pct, fragility_directions[sid])
             quarterly_pct = pct.rename(sid).to_frame().resample("QE").last()
             quarterly_pct = quarterly_pct[quarterly_pct.index <= today_end]
             pool[sid] = quarterly_pct
