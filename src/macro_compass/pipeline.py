@@ -1,7 +1,12 @@
 """Import pipeline orchestration (V1).
 
-Flow: fingerprint -> dedup check -> parse -> normalize -> validate ->
-archive raw -> merge canonical parquet -> refresh DuckDB -> record manifest.
+Flow: fingerprint -> dedup/resume check -> parse -> normalize -> validate ->
+archive raw -> merge canonical parquet -> refresh DuckDB -> finalize manifest.
+
+The manifest is used as a lightweight recovery journal. If canonical Parquet
+was written but the DuckDB refresh/finalization failed, the next import of the
+same file resumes from canonical instead of treating the hash as complete or
+writing the canonical rows a second time.
 """
 
 from __future__ import annotations
@@ -22,15 +27,18 @@ from macro_compass.ingestion import (
 from macro_compass.logging import get_logger
 from macro_compass.storage import raw_archive
 from macro_compass.storage.canonical_store import append_canonical
-from macro_compass.storage.raw_archive import is_hash_imported
 from macro_compass.storage.duckdb_store import DuckDBStore
 
 logger = get_logger(__name__)
 
 STATUS_IMPORTED = raw_archive.STATUS_IMPORTED
 STATUS_SKIPPED = raw_archive.STATUS_SKIPPED
+STATUS_CANONICAL_WRITTEN = raw_archive.STATUS_CANONICAL_WRITTEN
+STATUS_FAILED_POST_CANONICAL = raw_archive.STATUS_FAILED_POST_CANONICAL
 STATUS_FAILED_VALIDATION = "FAILED_VALIDATION"
 STATUS_DRY_RUN = "DRY_RUN"
+
+RESUMABLE_STATES = {STATUS_CANONICAL_WRITTEN, STATUS_FAILED_POST_CANONICAL}
 
 
 @dataclass
@@ -63,6 +71,16 @@ def parse_wind_file(path: Path, mapping: WindMapping, source: str, file_hash: st
                                   file_hash=file_hash)
 
 
+def _archive_path_from_state(state) -> str | None:
+    if state is None:
+        return None
+    value = state.get("archive_path", "")
+    if value is None or pd.isna(value):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
 def import_wind_file(
     path: Path,
     mapping: WindMapping,
@@ -77,15 +95,18 @@ def import_wind_file(
 
     import_time = datetime.now()
     file_hash = raw_archive.sha256_of_file(path)
+    latest_state = raw_archive.latest_hash_state(file_hash)
+    latest_status = str(latest_state["status"]) if latest_state is not None else None
 
-    # V1-01: the same file content must never be written twice.
-    if is_hash_imported(file_hash):
+    # Fully completed imports remain idempotent. SKIPPED events are ignored by
+    # latest_hash_state(), so repeated checks still resolve to IMPORTED.
+    if raw_archive.is_hash_imported(file_hash):
         raw_archive.record_manifest(
             file_name=path.name,
             file_hash=file_hash,
             import_time=import_time,
             rows=0,
-            status=raw_archive.STATUS_SKIPPED,
+            status=STATUS_SKIPPED,
             archive_path=None,
         )
         return ImportResult(
@@ -95,6 +116,9 @@ def import_wind_file(
             message="File already imported (SHA256 match) - no data written",
         )
 
+    # Even on a recovery attempt we re-parse and re-validate the supplied file.
+    # This gives the DuckDB refresh the exact canonical rows without re-merging
+    # them into Parquet and catches accidental file corruption before recovery.
     canonical, norm_report = parse_wind_file(path, mapping, source, file_hash=file_hash)
     validation = validate_canonical(canonical, registry)
 
@@ -120,37 +144,98 @@ def import_wind_file(
             message="Dry run - nothing was written",
         )
 
-    # V1-02: archive the untouched original first.
-    archive_path = raw_archive.archive_file(path, import_time)
+    resume_after_canonical = latest_status in RESUMABLE_STATES
+    archive_path = _archive_path_from_state(latest_state) if resume_after_canonical else None
 
-    # V1-03: merge into canonical parquet (latest import wins per series/date).
-    written = append_canonical(canonical)
-    logger.info("canonical updated: %s", written)
+    if resume_after_canonical:
+        # The canonical merge already completed in a prior attempt. Do not
+        # archive or append again unless the old event lacks its archive path.
+        if archive_path is None:
+            archive_path = str(raw_archive.archive_file(path, import_time))
+        logger.warning(
+            "resuming import after canonical write: file=%s hash=%s prior_status=%s",
+            path.name,
+            file_hash,
+            latest_status,
+        )
+        written = None
+    else:
+        # V1-02: archive the untouched original first.
+        archive_path = str(raw_archive.archive_file(path, import_time))
 
-    # V1-01: record the manifest entry before refreshing the cache so the
-    # DuckDB manifest mirror includes this import.
-    raw_archive.record_manifest(
-        file_name=path.name,
-        file_hash=file_hash,
-        import_time=import_time,
-        rows=len(canonical),
-        status=STATUS_IMPORTED,
-        archive_path=str(archive_path),
-    )
+        # V1-03: merge into canonical parquet (latest import wins per series/date).
+        written = append_canonical(canonical)
+        logger.info("canonical updated: %s", written)
 
-    # V1-04: refresh the DuckDB cache from the new canonical state.
-    with DuckDBStore(db_path) as store:
-        store.refresh_series_data(canonical)
-        store.refresh_series_metadata(registry)
-        store.refresh_import_manifest()
+        # Recovery checkpoint: from this point on, the hash is NOT considered
+        # imported until DuckDB + manifest finalization both succeed.
+        raw_archive.record_manifest(
+            file_name=path.name,
+            file_hash=file_hash,
+            import_time=import_time,
+            rows=len(canonical),
+            status=STATUS_CANONICAL_WRITTEN,
+            archive_path=archive_path,
+        )
+
+    try:
+        # V1-04: refresh the DuckDB cache from the canonical rows.
+        with DuckDBStore(db_path) as store:
+            store.refresh_series_data(canonical)
+            store.refresh_series_metadata(registry)
+
+            # Finalize the append-only journal before mirroring it into DuckDB.
+            raw_archive.record_manifest(
+                file_name=path.name,
+                file_hash=file_hash,
+                import_time=import_time,
+                rows=len(canonical),
+                status=STATUS_IMPORTED,
+                archive_path=archive_path,
+            )
+            store.refresh_import_manifest()
+    except Exception as exc:  # operational boundary: return recoverable state
+        logger.exception("post-canonical import finalization failed for %s", path.name)
+        try:
+            raw_archive.record_manifest(
+                file_name=path.name,
+                file_hash=file_hash,
+                import_time=import_time,
+                rows=len(canonical),
+                status=STATUS_FAILED_POST_CANONICAL,
+                archive_path=archive_path,
+            )
+        except Exception:
+            # If the manifest itself is unavailable, canonical remains
+            # idempotent and the next run can safely re-merge. Preserve the
+            # original failure as the user-facing error.
+            logger.exception("failed to persist recovery marker for %s", path.name)
+        return ImportResult(
+            status=STATUS_FAILED_POST_CANONICAL,
+            file_name=path.name,
+            file_hash=file_hash,
+            rows=len(canonical),
+            archive_path=archive_path,
+            canonical=canonical,
+            validation_warnings=validation.warnings,
+            message=(
+                "Canonical data is present but DuckDB/manifest finalization failed; "
+                f"rerun the same file to resume safely. Error: {exc}"
+            ),
+        )
+
+    if resume_after_canonical:
+        message = "Recovered prior partial import; canonical was not written twice"
+    else:
+        message = f"Imported; canonical rows now: {written}"
 
     return ImportResult(
         status=STATUS_IMPORTED,
         file_name=path.name,
         file_hash=file_hash,
         rows=len(canonical),
-        archive_path=str(archive_path),
+        archive_path=archive_path,
         canonical=canonical,
         validation_warnings=validation.warnings,
-        message=f"Imported; canonical rows now: {written}",
+        message=message,
     )
