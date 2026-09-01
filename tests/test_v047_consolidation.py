@@ -198,11 +198,8 @@ def test_wind_import_resumes_after_core_duckdb_failure_without_reappend(
     assert first.status == pipeline.STATUS_FAILED_POST_CANONICAL
     assert first.ok is False
     assert calls["append"] == 1 and calls["archive"] == 1
-    assert [e["status"] for e in events] == [
-        raw_archive.STATUS_CANONICAL_WRITTEN,
-        raw_archive.STATUS_FAILED_POST_CANONICAL,
-    ]
-    assert all(e["rows"] == 0 for e in events)
+    assert [e["status"] for e in events] == [raw_archive.STATUS_FAILED_POST_CANONICAL]
+    assert events[0]["rows"] == 0
     assert raw_archive.is_hash_imported(file_hash) is False
 
     failures.metadata = False
@@ -225,7 +222,7 @@ def test_manifest_mirror_failure_is_nonfatal_cache_warning(monkeypatch, tmp_path
     assert first.status == pipeline.STATUS_IMPORTED
     assert first.ok is True
     assert calls["append"] == 1
-    assert events[-1]["status"] == raw_archive.STATUS_IMPORTED
+    assert [e["status"] for e in events] == [raw_archive.STATUS_IMPORTED]
     assert raw_archive.is_hash_imported(file_hash) is True
     assert any("manifest mirror refresh failed" in w for w in first.validation_warnings)
 
