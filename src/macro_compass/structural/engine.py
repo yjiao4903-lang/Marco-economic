@@ -251,11 +251,13 @@ def compute_structural_readings(
         # the explicit 0=lower fragility / 1=higher fragility convention,
         # resampled to a quarterly index, then averaged. Missing categories
         # leave the composite PARTIAL - never a synthetic fill.
-        input_directions = cfg.get("input_directions") or {}
+        fragility_directions = cfg.get("input_fragility_directions") or {}
         required_inputs = set(cfg.get("required_inputs") or ())
         declared_ids = {i.series_id for i in inputs}
-        if set(input_directions) != declared_ids:
-            raise ValueError("S3 input_directions must cover every declared input")
+        if set(fragility_directions) != declared_ids:
+            raise ValueError(
+                "S3 input_fragility_directions must cover every declared input"
+            )
         if not required_inputs.issubset(declared_ids):
             raise ValueError("S3 required_inputs must be declared S3 inputs")
         # A monthly observation in the currently open quarter is not a
@@ -304,7 +306,7 @@ def compute_structural_readings(
             cleaned = _clean(sid)
             basis = apply_chain(cleaned, [dict(step) for step in spec.transforms])
             pct = rolling_percentile(basis, window=int(cfg["percentile_window"]))
-            pct = _align_s3_percentile_to_fragility(pct, input_directions[sid])
+            pct = _align_s3_percentile_to_fragility(pct, fragility_directions[sid])
             quarterly_pct = pct.rename(sid).to_frame().resample("QE").last()
             quarterly_pct = quarterly_pct[quarterly_pct.index <= today_end]
             pool[sid] = quarterly_pct
