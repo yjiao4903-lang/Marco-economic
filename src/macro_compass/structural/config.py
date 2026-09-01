@@ -13,7 +13,11 @@ from pathlib import Path
 import yaml
 
 DIRECTIONS = ("positive", "negative")
-S3_INPUT_DIRECTIONS = ("higher_is_more_fragile", "lower_is_more_fragile")
+S3_INPUT_FRAGILITY_DIRECTIONS = ("higher_is_more_fragile", "lower_is_more_fragile")
+S3_LEGACY_TO_FRAGILITY = {
+    "positive": "lower_is_more_fragile",
+    "negative": "higher_is_more_fragile",
+}
 
 # thresholds accepted by the engine's diagnostic read. S1 uses level
 # thresholds (elevated / above_trend on the gap in percent); S2 uses
@@ -55,25 +59,53 @@ def load_structural_config(path: Path) -> dict:
             # no priors yet - only the direction convention stays mandatory.
             continue
         if signal_id == "S3":
-            directions = spec.get("input_directions")
+            legacy_directions = spec.get("input_directions")
+            fragility_directions = spec.get("input_fragility_directions")
             required = spec.get("required_inputs")
-            if not isinstance(directions, dict) or not directions:
+            if not isinstance(legacy_directions, dict) or not legacy_directions:
                 raise StructuralConfigError(
                     "structural.yaml: signal 'S3' must declare non-empty input_directions"
                 )
+            if any(value not in DIRECTIONS for value in legacy_directions.values()):
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' legacy input_directions values must be "
+                    f"in {DIRECTIONS}"
+                )
+            if not isinstance(fragility_directions, dict) or not fragility_directions:
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' must declare non-empty "
+                    "input_fragility_directions"
+                )
+            if set(fragility_directions) != set(legacy_directions):
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' input_fragility_directions must cover "
+                    "exactly the same inputs as input_directions"
+                )
+            if any(
+                value not in S3_INPUT_FRAGILITY_DIRECTIONS
+                for value in fragility_directions.values()
+            ):
+                raise StructuralConfigError(
+                    "structural.yaml: signal 'S3' input_fragility_directions values must be "
+                    f"in {S3_INPUT_FRAGILITY_DIRECTIONS}"
+                )
+            for series_id, legacy_direction in legacy_directions.items():
+                expected = S3_LEGACY_TO_FRAGILITY[legacy_direction]
+                actual = fragility_directions[series_id]
+                if actual != expected:
+                    raise StructuralConfigError(
+                        "structural.yaml: signal 'S3' direction metadata conflict for "
+                        f"{series_id}: legacy {legacy_direction!r} implies {expected!r}, "
+                        f"got {actual!r}"
+                    )
             if not isinstance(required, list) or not required:
                 raise StructuralConfigError(
                     "structural.yaml: signal 'S3' must declare non-empty required_inputs"
                 )
-            if any(value not in S3_INPUT_DIRECTIONS for value in directions.values()):
-                raise StructuralConfigError(
-                    "structural.yaml: signal 'S3' input_directions values must be "
-                    f"in {S3_INPUT_DIRECTIONS}; ambiguous positive/negative labels are not allowed"
-                )
-            if any(item not in directions for item in required):
+            if any(item not in fragility_directions for item in required):
                 raise StructuralConfigError(
                     "structural.yaml: signal 'S3' required_inputs must be covered by "
-                    "input_directions"
+                    "input_fragility_directions"
                 )
         for key in ("percentile_window", "trend_quarters"):
             value = spec.get(key)
