@@ -18,3 +18,11 @@ dist/
 # docs/research/2026-08-30_bpack_structural_survey.md; the raw probes are
 # machine-local, not deliverable).
 _scratch_b_research/
+
+# Local test/build artifacts and dependency trees
+.pytest-*/
+.pytest_*/
+.tmp.driveupload/
+node_modules/
+outputs/
+v/
