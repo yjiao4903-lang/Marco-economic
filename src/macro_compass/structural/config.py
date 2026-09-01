@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 DIRECTIONS = ("positive", "negative")
+S3_INPUT_DIRECTIONS = ("higher_is_more_fragile", "lower_is_more_fragile")
 
 # thresholds accepted by the engine's diagnostic read. S1 uses level
 # thresholds (elevated / above_trend on the gap in percent); S2 uses
@@ -64,10 +65,10 @@ def load_structural_config(path: Path) -> dict:
                 raise StructuralConfigError(
                     "structural.yaml: signal 'S3' must declare non-empty required_inputs"
                 )
-            if any(value not in DIRECTIONS for value in directions.values()):
+            if any(value not in S3_INPUT_DIRECTIONS for value in directions.values()):
                 raise StructuralConfigError(
                     "structural.yaml: signal 'S3' input_directions values must be "
-                    f"in {DIRECTIONS}"
+                    f"in {S3_INPUT_DIRECTIONS}; ambiguous positive/negative labels are not allowed"
                 )
             if any(item not in directions for item in required):
                 raise StructuralConfigError(
