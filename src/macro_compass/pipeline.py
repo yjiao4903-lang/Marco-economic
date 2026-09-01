@@ -3,10 +3,11 @@
 Flow: fingerprint -> dedup/resume check -> parse -> normalize -> validate ->
 archive raw -> merge canonical parquet -> refresh DuckDB -> finalize manifest.
 
-The manifest is used as a lightweight recovery journal. If canonical Parquet
-was written but the core DuckDB refresh/finalization failed, the next import of
-the same file resumes from canonical instead of treating the hash as complete
-or writing the canonical rows a second time.
+If canonical Parquet was written but a caught core DuckDB/finalization step
+failed, the failure is journaled as ``FAILED_POST_CANONICAL``. Re-running the
+same file resumes after canonical instead of writing canonical a second time.
+Normal successful imports keep the original one-row ``IMPORTED`` manifest
+contract.
 """
 
 from __future__ import annotations
@@ -33,12 +34,9 @@ logger = get_logger(__name__)
 
 STATUS_IMPORTED = raw_archive.STATUS_IMPORTED
 STATUS_SKIPPED = raw_archive.STATUS_SKIPPED
-STATUS_CANONICAL_WRITTEN = raw_archive.STATUS_CANONICAL_WRITTEN
 STATUS_FAILED_POST_CANONICAL = raw_archive.STATUS_FAILED_POST_CANONICAL
 STATUS_FAILED_VALIDATION = "FAILED_VALIDATION"
 STATUS_DRY_RUN = "DRY_RUN"
-
-RESUMABLE_STATES = {STATUS_CANONICAL_WRITTEN, STATUS_FAILED_POST_CANONICAL}
 
 
 @dataclass
@@ -144,12 +142,12 @@ def import_wind_file(
             message="Dry run - nothing was written",
         )
 
-    resume_after_canonical = latest_status in RESUMABLE_STATES
+    resume_after_canonical = latest_status == STATUS_FAILED_POST_CANONICAL
     archive_path = _archive_path_from_state(latest_state) if resume_after_canonical else None
 
     if resume_after_canonical:
-        # The canonical merge already completed in a prior attempt. Do not
-        # archive or append again unless the old event lacks its archive path.
+        # A prior caught failure confirms canonical already landed. Reuse the
+        # archived original and skip both archive and canonical merge.
         if archive_path is None:
             archive_path = str(raw_archive.archive_file(path, import_time))
         logger.warning(
@@ -164,19 +162,10 @@ def import_wind_file(
         archive_path = str(raw_archive.archive_file(path, import_time))
 
         # V1-03: merge into canonical parquet (latest import wins per series/date).
+        # This write is already idempotent by (series_id, date), so an
+        # uncatchable hard process crash here remains safe on a future rerun.
         written = append_canonical(canonical)
         logger.info("canonical updated: %s", written)
-
-        # Recovery checkpoint. rows=0 because this is a state event, not a
-        # second imported-data accounting row; only IMPORTED carries row count.
-        raw_archive.record_manifest(
-            file_name=path.name,
-            file_hash=file_hash,
-            import_time=import_time,
-            rows=0,
-            status=STATUS_CANONICAL_WRITTEN,
-            archive_path=archive_path,
-        )
 
     mirror_warning = None
     try:
@@ -185,8 +174,9 @@ def import_wind_file(
             store.refresh_series_data(canonical)
             store.refresh_series_metadata(registry)
 
-            # Only now is the import complete. If this write fails, the prior
-            # CANONICAL_WRITTEN checkpoint keeps the hash resumable.
+            # Only after the core cache agrees with canonical do we mark the
+            # file fully imported. Normal success therefore still creates one
+            # manifest row, preserving the existing storage contract.
             raw_archive.record_manifest(
                 file_name=path.name,
                 file_hash=file_hash,
@@ -208,7 +198,7 @@ def import_wind_file(
                     "series_data and series_metadata are complete. Rebuild DuckDB if needed. "
                     f"Error: {exc}"
                 )
-    except Exception as exc:  # core post-canonical boundary: recoverable
+    except Exception as exc:  # caught core post-canonical boundary: recoverable
         logger.exception("post-canonical import finalization failed for %s", path.name)
         try:
             raw_archive.record_manifest(
@@ -221,8 +211,7 @@ def import_wind_file(
             )
         except Exception:
             # If the manifest itself is unavailable, canonical remains
-            # idempotent and the next run can safely re-merge. Preserve the
-            # original failure as the user-facing error.
+            # idempotent and a later rerun can safely re-merge.
             logger.exception("failed to persist recovery marker for %s", path.name)
         return ImportResult(
             status=STATUS_FAILED_POST_CANONICAL,
