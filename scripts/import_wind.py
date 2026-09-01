@@ -1,7 +1,7 @@
 """Import a Wind-exported Excel/CSV file into the macro compass data layer.
 
-Pipeline: fingerprint -> dedup check -> parse -> validate ->
-[archive raw -> canonical parquet -> DuckDB -> manifest] (unless --dry-run).
+Pipeline: fingerprint -> dedup/resume check -> parse -> validate ->
+archive raw -> canonical parquet -> DuckDB -> finalize manifest (unless --dry-run).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from macro_compass.config import ConfigError, WindMapping, load_indicator_config
 from macro_compass.logging import setup_logging  # noqa: E402
 from macro_compass.pipeline import (  # noqa: E402
     STATUS_DRY_RUN,
+    STATUS_FAILED_POST_CANONICAL,
     STATUS_FAILED_VALIDATION,
     STATUS_SKIPPED,
     import_wind_file,
@@ -76,6 +77,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ERROR: {e}")
         for w in result.validation_warnings:
             print(f"  WARN:  {w}")
+        return 1
+
+    if result.status == STATUS_FAILED_POST_CANONICAL:
+        print(f"{result.file_name}: import PARTIAL - canonical data was written")
+        print(result.message)
+        if result.archive_path:
+            print(f"Archived to: {result.archive_path}")
+        print("Action: rerun the same file; the importer will resume without rewriting canonical data.")
         return 1
 
     print("File parsed successfully")
