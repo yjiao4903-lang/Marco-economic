@@ -88,11 +88,12 @@ def _factor_snapshot(result: Any) -> FactorSnapshot:
             coverage=float(coverage) if coverage is not None else None,
             status=SnapshotStatus.NO_SIGNAL,
         )
+    ready = composite is not None and coverage is not None
     return FactorSnapshot(
         score=float(score),
-        confidence=float(composite) if composite is not None else 0.0,
-        coverage=float(coverage) if coverage is not None else 0.0,
-        status=SnapshotStatus.READY,
+        confidence=float(composite) if composite is not None else None,
+        coverage=float(coverage) if coverage is not None else None,
+        status=SnapshotStatus.READY if ready else SnapshotStatus.DEGRADED,
     )
 
 
@@ -191,12 +192,6 @@ def build_structural_snapshot(
     property_status = _reading_status(s3)
     property_score = _fragility_value(s3, property_metric=True)
     property_confidence = _reading_confidence(s3)
-    if property_score is None and property_status not in (
-        SnapshotStatus.NO_SIGNAL,
-        SnapshotStatus.UNAVAILABLE,
-    ):
-        property_status = SnapshotStatus.NO_SIGNAL
-        property_confidence = None
 
     usable: list[tuple[float, float, SnapshotStatus]] = []
     for signal_id in STRUCTURAL_IDS:
@@ -268,6 +263,7 @@ def _asset_status(result: Any) -> SnapshotStatus:
             SnapshotStatus.READY,
             SnapshotStatus.WARMUP,
             SnapshotStatus.PARTIAL,
+            SnapshotStatus.DEGRADED,
             SnapshotStatus.NO_SIGNAL,
         },
     )
@@ -279,12 +275,14 @@ def _asset_fields(result: Any) -> tuple[Optional[float], Optional[float], Option
     confidence = _confidence_block(result)
     composite = confidence.get("composite")
     coverage = confidence.get("coverage")
-    return (
-        float(score) if score is not None else None,
-        float(composite) if composite is not None else None,
-        float(coverage) if coverage is not None else None,
-        status,
-    )
+    score_value = float(score) if score is not None else None
+    confidence_value = float(composite) if composite is not None else None
+    coverage_value = float(coverage) if coverage is not None else None
+    if status == SnapshotStatus.READY and (
+        score_value is None or confidence_value is None or coverage_value is None
+    ):
+        status = SnapshotStatus.DEGRADED
+    return score_value, confidence_value, coverage_value, status
 
 
 def build_fundamental_asset_view(
@@ -386,9 +384,10 @@ def hash_config_files(
         path = root / relative
         if not path.exists():
             raise FileNotFoundError(f"integration config dependency not found: {path}")
+        content = path.read_bytes().replace(b"\r\n", b"\n")
         hasher.update(relative.encode("utf-8"))
         hasher.update(b"\0")
-        hasher.update(path.read_bytes())
+        hasher.update(content)
         hasher.update(b"\0")
     return hasher.hexdigest()
 
