@@ -344,6 +344,39 @@ def test_no_data_exports_explicit_unavailable_degraded_state(tmp_path):
     assert all(row["status"] == "UNAVAILABLE" for row in assets["assets"])
 
 
+def test_missing_confidence_is_not_zero_filled():
+    macro = build_macro_snapshot(
+        {"growth": SimpleNamespace(score=0.2, confidence={})},
+        None,
+        as_of=AS_OF,
+        data_cutoff=CUTOFF,
+        model_version=MODEL,
+    )
+    assert macro.factors.growth.status == SnapshotStatus.DEGRADED
+    assert macro.factors.growth.score == 0.2
+    assert macro.factors.growth.confidence is None
+    assert macro.factors.growth.coverage is None
+
+    view = build_fundamental_asset_view(
+        {
+            "CN_EQUITY": SimpleNamespace(
+                status="READY",
+                score=0.2,
+                confidence={},
+                factor_contributions={},
+            )
+        },
+        as_of=AS_OF,
+        data_cutoff=CUTOFF,
+        model_version=MODEL,
+    )
+    cn_eq = next(row for row in view.assets if row.asset_id == "CN_EQ")
+    assert cn_eq.status == SnapshotStatus.DEGRADED
+    assert cn_eq.fundamental_score == 0.2
+    assert cn_eq.confidence is None
+    assert cn_eq.coverage is None
+
+
 def test_duplicate_alias_mapping_is_rejected(asset_results):
     duplicated = dict(asset_results)
     duplicated["CN_EQ"] = asset(0.3)
