@@ -8,6 +8,7 @@ and the no-promotion metadata contract.
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import yaml
 
 
@@ -16,7 +17,13 @@ FLOW = ROOT / "data" / "local" / "pbc_reported_flow_candidates_20260831.csv"
 CUM = ROOT / "data" / "local" / "pbc_reported_cumulative_sources_20260831.csv"
 
 
+def _require_local_artifact(path: Path) -> None:
+    if not path.exists():
+        pytest.skip(f"local audit artifact not available: {path.relative_to(ROOT)}")
+
+
 def test_pbc_reported_candidates_are_complete_and_continuous() -> None:
+    _require_local_artifact(FLOW)
     flow = pd.read_csv(FLOW)
     expected = {
         "CN_TSF_TOTAL_PBC_REPORTED_CANDIDATE": [620.0, 2030.0, 3360.0, 1410.0],
@@ -42,6 +49,7 @@ def test_pbc_reported_candidates_are_complete_and_continuous() -> None:
 
 
 def test_pbc_reported_candidates_pass_rounding_aware_wind_gate() -> None:
+    _require_local_artifact(FLOW)
     pbc = pd.read_csv(FLOW)
     pbc["date"] = pd.to_datetime(pbc["date"]).dt.strftime("%Y-%m-%d")
     wind = pd.read_parquet(ROOT / "data" / "canonical" / "macro" / "macro.parquet")
@@ -79,6 +87,7 @@ def test_candidate_config_is_disabled_and_not_in_signals() -> None:
 
 
 def test_cumulative_source_contract_preserves_resolution_and_raw_unit() -> None:
+    _require_local_artifact(CUM)
     cumulative = pd.read_csv(CUM)
     assert cumulative["statistical_month"].tolist() == [
         "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"
