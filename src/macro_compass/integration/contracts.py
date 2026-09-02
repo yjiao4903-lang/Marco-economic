@@ -171,6 +171,8 @@ class FundamentalAsset(ContractModel):
             for value in (self.fundamental_score, self.confidence, self.coverage)
         ):
             raise ValueError("UNAVAILABLE asset must use null values, never zero-fill")
+        if self.status == SnapshotStatus.NO_SIGNAL and self.fundamental_score is not None:
+            raise ValueError("NO_SIGNAL asset score must be null")
         return self
 
 
@@ -181,6 +183,20 @@ class FxView(ContractModel):
     coverage: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     status: SnapshotStatus
     contributions: AssetContributions
+
+    @model_validator(mode="after")
+    def _coherent_missingness(self):
+        if self.status == SnapshotStatus.READY and (
+            self.fundamental_score is None
+            or self.confidence is None
+            or self.coverage is None
+        ):
+            raise ValueError("READY FX view requires score, confidence and coverage")
+        if self.status in (SnapshotStatus.UNAVAILABLE, SnapshotStatus.NO_SIGNAL) and (
+            self.fundamental_score is not None
+        ):
+            raise ValueError(f"{self.status.value} FX view score must be null")
+        return self
 
 
 class FundamentalAssetView(ContractModel):
