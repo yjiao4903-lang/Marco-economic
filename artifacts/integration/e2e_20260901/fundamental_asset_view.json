@@ -1,0 +1,136 @@
+{
+  "as_of": "2026-09-01",
+  "assets": [
+    {
+      "asset_id": "CN_EQ",
+      "confidence": 0.880249433106576,
+      "contributions": {
+        "domestic_financial": 0.05871449818936013,
+        "global_financial": -0.06391982003047106,
+        "growth": -0.13842781311474453,
+        "inflation": -0.0044973544973544825,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": -0.14813048945320995,
+      "status": "READY"
+    },
+    {
+      "asset_id": "HK_EQ",
+      "confidence": 0.8785132275132274,
+      "contributions": {
+        "domestic_financial": 0.052060188394565984,
+        "global_financial": -0.06883672926358421,
+        "growth": -0.1427992177394207,
+        "inflation": -0.004197530864197517,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": -0.16377328947263645,
+      "status": "READY"
+    },
+    {
+      "asset_id": "US_EQ",
+      "confidence": null,
+      "contributions": {
+        "domestic_financial": null,
+        "global_financial": null,
+        "growth": null,
+        "inflation": null,
+        "structural": null
+      },
+      "coverage": null,
+      "fundamental_score": null,
+      "status": "UNAVAILABLE"
+    },
+    {
+      "asset_id": "CN_GOV_BOND",
+      "confidence": 0.8682345679012345,
+      "contributions": {
+        "domestic_financial": -0.06393356469508103,
+        "global_financial": -0.04015475873709079,
+        "growth": 0.1665990873626575,
+        "inflation": 0.004547325102880645,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": 0.06705808903336631,
+      "status": "READY"
+    },
+    {
+      "asset_id": "CN_CREDIT",
+      "confidence": 0.8667948717948718,
+      "contributions": {
+        "domestic_financial": 0.11065424658764024,
+        "global_financial": null,
+        "growth": -0.17849902217427588,
+        "inflation": -0.003632478632478621,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": -0.07147725421911426,
+      "status": "READY"
+    },
+    {
+      "asset_id": "GOLD",
+      "confidence": 0.8900196078431373,
+      "contributions": {
+        "domestic_financial": 0.044001335701908714,
+        "global_financial": -0.07369579250571959,
+        "growth": 0.10079944781606168,
+        "inflation": -0.008148148148148123,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": 0.06295684286410268,
+      "status": "READY"
+    },
+    {
+      "asset_id": "COMMODITY",
+      "confidence": 0.8776068376068377,
+      "contributions": {
+        "domestic_financial": 0.053114038362067316,
+        "global_financial": -0.055598896712894946,
+        "growth": -0.13730694013405836,
+        "inflation": -0.006296296296296276,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": -0.14608809478118226,
+      "status": "READY"
+    },
+    {
+      "asset_id": "CASH",
+      "confidence": null,
+      "contributions": {
+        "domestic_financial": null,
+        "global_financial": null,
+        "growth": null,
+        "inflation": null,
+        "structural": null
+      },
+      "coverage": null,
+      "fundamental_score": null,
+      "status": "UNAVAILABLE"
+    }
+  ],
+  "data_cutoff": "2026-08-31",
+  "fx_views": [
+    {
+      "asset_id": "CNY",
+      "confidence": 0.8757961053837343,
+      "contributions": {
+        "domestic_financial": 0.05931980229440508,
+        "global_financial": -0.06457878724728004,
+        "growth": -0.15457647281071313,
+        "inflation": -0.0029209621993127053,
+        "structural": null
+      },
+      "coverage": 1.0,
+      "fundamental_score": -0.1627564199629008,
+      "status": "READY"
+    }
+  ],
+  "model_version": "0.1.0",
+  "schema_version": "1.0"
+}

@@ -1,0 +1,42 @@
+{
+  "as_of": "2026-09-01",
+  "data_cutoff": "2026-08-31",
+  "factors": {
+    "domestic_financial": {
+      "confidence": 0.9583333333333334,
+      "coverage": 1.0,
+      "score": 0.28770104112786465,
+      "status": "READY"
+    },
+    "fiscal": {
+      "confidence": null,
+      "coverage": null,
+      "score": null,
+      "status": "UNAVAILABLE"
+    },
+    "global_financial": {
+      "confidence": 0.9444444444444445,
+      "coverage": 1.0,
+      "score": 0.24092855242254477,
+      "status": "READY"
+    },
+    "growth": {
+      "confidence": 0.79,
+      "coverage": 1.0,
+      "score": -0.35699804434855176,
+      "status": "READY"
+    },
+    "inflation": {
+      "confidence": 0.8944444444444444,
+      "coverage": 1.0,
+      "score": -0.03148148148148138,
+      "status": "READY"
+    }
+  },
+  "model_version": "0.1.0",
+  "regime": {
+    "confidence": 0.79,
+    "state": "TRANSITION"
+  },
+  "schema_version": "1.0"
+}

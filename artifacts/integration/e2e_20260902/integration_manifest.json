@@ -1,0 +1,20 @@
+{
+  "as_of": "2026-09-02",
+  "config_hash": "81a7371666e00abddc15ec4e0940df966871617ad9132b808db34dd7cabb41c0",
+  "data_cutoff": "2026-08-31",
+  "files": {
+    "fundamental_asset_view.json": {
+      "sha256": "a267db6a497529bd7e5ffd69fad1553060fbdcc0836a6ca49f683466a40ef37a"
+    },
+    "macro_snapshot.json": {
+      "sha256": "3c830c644a0240abafd1dd49872fcacf497708d781f2fa0dd2fe5ea312edf86e"
+    },
+    "structural_snapshot.json": {
+      "sha256": "eaa3abdc74f202ae646970eb314b859ad221c5f13144cf049c4bb02f9a8426a3"
+    }
+  },
+  "generated_at": "2026-09-02T14:35:51.806074Z",
+  "marco_git_commit": "3b22ab6f74c0000a0301137ee622fdba3c7b415f",
+  "marco_model_version": "0.1.0",
+  "schema_version": "1.0"
+}

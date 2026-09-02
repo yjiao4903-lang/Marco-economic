@@ -33,13 +33,13 @@
 | I3 | Cost Pressure Composite | US_GSCPI | component | 1997-09-30 | nyfed | same as current / n/a | monthly | HIGH | READY | 2002-08-31 |  |
 | D1 | Funding Condition | CN_DR007 | spread_leg | 2017-05-31 | chinamoney+akshare | same as current / n/a | daily | LOW | READY | 2024-12-30 |  |
 | D1 | Funding Condition | CN_POLICY_RATE_7D | spread_leg | 2024-01-01 | pbc+manual_series | Committed step file data/manual_series/ (MANUAL provenance bootstrap) | daily | MEDIUM | READY | 2024-12-30 |  |
-| D2 | Private Credit Impulse | CN_TSF_TOTAL | spread_leg | 2018-01-31 | wind+pbc | Wind historical 2018-01..2026-03 + PBC production tail from 2026-04 | monthly | MEDIUM | READY | 2018-01-31 | Production landed; conditionally accepted on public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent |
-| D2 | Private Credit Impulse | CN_GOV_BOND_FINANCING | spread_leg | 2018-01-31 | wind+pbc | Wind historical 2018-01..2026-03 + PBC production tail from 2026-04 | monthly | MEDIUM | READY | 2018-01-31 | Production landed; conditionally accepted on public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent |
+| D2 | Private Credit Impulse | CN_TSF_TOTAL | spread_leg | 2018-01-31 | pbc+akshare | Wind one-shot backfill wind_backfill_tsf.csv (PENDING file) | monthly | MEDIUM | READY | 2019-01-31 | wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice |
+| D2 | Private Credit Impulse | CN_GOV_BOND_FINANCING | spread_leg | 2018-01-31 | pbc | Wind one-shot backfill wind_backfill_tsf.csv (PENDING file) | monthly | MEDIUM | READY | 2019-01-31 | wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice |
 | D3 | Excess Liquidity | CN_M2_YOY | spread_leg | 2008-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY | 2026-04-30 |  |
 | D3 | Excess Liquidity | CN_PRIVATE_TSF_YOY | spread_leg | 2026-04-30 | pbc | same as current / n/a | monthly | LOW | READY | 2026-04-30 |  |
-| D4 | Fiscal Support | CN_GOV_BOND_FINANCING | level | 2018-01-31 | wind+pbc | Wind historical 2018-01..2026-03 + PBC production tail from 2026-04 | monthly | MEDIUM | READY | 2018-01-31 | Production landed; conditionally accepted on public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent |
+| D4 | Fiscal Support | CN_GOV_BOND_FINANCING | level | 2018-01-31 | pbc | Wind one-shot backfill wind_backfill_tsf.csv (PENDING file) | monthly | MEDIUM | READY | 2019-01-31 | wind_backfill_tsf.csv NOT yet provided by user (P0-1) - WARMUP, no splice |
 | X1 | US 10Y Real Yield | US_REAL_YIELD_10Y | level | 2024-01-02 | treasury+fred | FRED DFII10 (fallback; NOT merged - overlap BLOCKED by FRED network) | daily | LOW | READY | 2024-12-31 | FRED DFII10 unreachable (overlap BLOCKED 2026-08-30) - no FRED rows merged yet |
-| X2 | Broad USD | USD_BROAD | level | 2006-01-02 | fred+fed_h10 | FRED DTWEXBGS (canonical) | daily | LOW | READY | 2006-01-02 | FRED history restored; H.10 remains explicit fallback |
+| X2 | Broad USD | USD_BROAD | level | 2006-01-02 | fred+fed_h10 | FRED DTWEXBGS (canonical) | daily | LOW | READY | 2006-12-15 |  |
 | X3 | ANFCI | ANFCI | level | 1971-01-08 | chicagofed+fred | same as current / n/a | weekly | MEDIUM | READY | 1973-12-28 |  |
 
 ## Market signals
@@ -59,10 +59,10 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S1 | Credit-to-GDP Gap | CN_CREDIT_TO_GDP_GAP | level | 1995-12-31 | bis | same as current / n/a | quarterly | HIGH | READY |  |  |
 | S2 | Debt Service Ratio | CN_DSR | level | 1999-03-31 | bis | same as current / n/a | quarterly | HIGH | READY |  |  |
-| S3 | Property Vulnerability | CN_REAL_ESTATE_CLIMATE | component | 1998-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
-| S3 | Property Vulnerability | CN_HOUSEHOLD_LEVERAGE | component | 2005-03-01 | akshare+wind_manual | same as current / n/a | quarterly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
-| S3 | Property Vulnerability | CN_NEW_HOUSE_PRICE_YOY | component | 2011-01-31 | wind_manual | same as current / n/a | monthly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
-| S3 | Property Vulnerability | CN_PROPERTY_FUNDING_YOY | component | 1998-07-31 | wind_manual | same as current / n/a | monthly | LOW | READY |  | Proxy pool live; S3 aggregate READY 4/4, direction review remains |
+| S3 | Property Vulnerability | CN_REAL_ESTATE_CLIMATE | component | 1998-01-31 | akshare+wind_manual | same as current / n/a | monthly | LOW | READY |  | Property Vulnerability proxy pool pending B-package research - NO_SIGNAL (honest, no fabricated proxy) |
+| S3 | Property Vulnerability | CN_HOUSEHOLD_LEVERAGE | component | 2005-03-01 | akshare+wind_manual | same as current / n/a | quarterly | LOW | READY |  | Property Vulnerability proxy pool pending B-package research - NO_SIGNAL (honest, no fabricated proxy) |
+| S3 | Property Vulnerability | CN_NEW_HOUSE_PRICE_YOY | component | 2011-01-31 | wind_manual | same as current / n/a | monthly | LOW | READY |  | Property Vulnerability proxy pool pending B-package research - NO_SIGNAL (honest, no fabricated proxy) |
+| S3 | Property Vulnerability | CN_PROPERTY_FUNDING_YOY | component | 1998-07-31 | wind_manual | same as current / n/a | monthly | LOW | READY |  | Property Vulnerability proxy pool pending B-package research - NO_SIGNAL (honest, no fabricated proxy) |
 
 ## Source-Transition notes (Task 4)
 
@@ -154,5 +154,5 @@
 ## Summary
 
 - Core signals whose inputs are all live-and-comparable to 2012+: see per-signal `comparable_history_start` above.
-- Domestic target (>=3/4 READY) is D1-D4 READY; D2/D4 production replacement is landed and conditionally accepted on the public cumulative-report difference gate (10 bn_cny); strict live-PBC raw-report gate remains independent.
+- Domestic target (>=3/4 READY) currently D1+D3 READY; D2/D4 held WARMUP until `wind_backfill_tsf.csv` is imported (no splice, no synthetic).
 - X1 overlap check remains governed by its own gate; X2 = READY (canonical history ready).
