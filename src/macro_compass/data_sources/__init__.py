@@ -14,9 +14,26 @@ Layout:
     nyfed.py      - NY Fed reference rates (SOFR)
     chicagofed.py - Chicago Fed NFCI / ANFCI
     wind_manual.py - manual Wind exports (always MANUAL_REQUIRED)
+
+W1 PIT note:
+    The pre-evidence ``temporal_metadata_for_spec`` implementation in base.py
+    used configured lag metadata to manufacture a publication timestamp.  The
+    accepted Cross #37 evidence forbids that interpretation.  Until the helper
+    is physically retired from the legacy base module, package initialization
+    replaces it with ``actual_release_metadata`` so every adapter import uses
+    the fail-closed actual-release gate.  This preserves the legacy module
+    surface without allowing observation-date arithmetic into PIT admission.
 """
 
-from macro_compass.data_sources.base import (
+from macro_compass.data_sources import base as _base
+from macro_compass.data_sources.pit_release import actual_release_metadata
+
+# Compatibility shim: adapter modules import ``temporal_metadata_for_spec``
+# from base.py.  Replace that symbol before registry/updater can import any
+# adapter.  The replacement never derives release_at from observation dates.
+_base.temporal_metadata_for_spec = actual_release_metadata
+
+from macro_compass.data_sources.base import (  # noqa: E402
     DataSourceAdapter,
     DataSourceError,
     FetchError,
@@ -24,7 +41,7 @@ from macro_compass.data_sources.base import (
     ManualFetchRequired,
     ProviderUnavailable,
 )
-from macro_compass.data_sources.registry import (
+from macro_compass.data_sources.registry import (  # noqa: E402
     AdapterRegistry,
     DataSourcesConfig,
     DerivedSeriesSpec,
@@ -32,14 +49,14 @@ from macro_compass.data_sources.registry import (
     SeriesSource,
     load_data_sources_config,
 )
-from macro_compass.data_sources.derived import (
+from macro_compass.data_sources.derived import (  # noqa: E402
     DerivedSeriesError,
     derive_cn_dr007_spread,
     derive_configured_series,
     derive_difference,
     derive_us_10y2y_spread,
 )
-from macro_compass.data_sources.updater import (
+from macro_compass.data_sources.updater import (  # noqa: E402
     FetchOutcome,
     UpdateReport,
     load_fetch_state,
@@ -70,4 +87,5 @@ __all__ = [
     "load_fetch_state",
     "run_update",
     "save_fetch_state",
+    "actual_release_metadata",
 ]
