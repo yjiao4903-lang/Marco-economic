@@ -23,6 +23,7 @@ from macro_compass.data_sources.base import (
     build_url,
     http_get,
 )
+from macro_compass.data_sources.pit_release import actual_release_metadata
 
 FREDGRAPH_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 FRED_OBSERVATIONS_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -162,6 +163,11 @@ class FredAdapter(DataSourceAdapter):
             dates, values = parse_fred_csv(text, code)
         if not dates:
             raise FetchError(f"FRED returned no usable observations for '{code}'")
+
+        # FRED's observation endpoint does not expose the source publication
+        # calendar.  For PIT-gated W1 routes we therefore fail closed here;
+        # CPILFESL strict replay additionally requires ALFRED/frozen vintages.
+        temporal = actual_release_metadata(spec, dates)
         return build_canonical_frame(
             series_id,
             dates,
@@ -172,4 +178,5 @@ class FredAdapter(DataSourceAdapter):
             unit="",
             frequency=spec.frequency,
             category=spec.category,
+            **temporal,
         )

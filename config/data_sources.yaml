@@ -103,6 +103,28 @@ providers:
     adapter_class: BisAdapter
     timeout_seconds: 90
 
+derived_series:
+  CN_DR007_SPREAD:
+    legs: [CN_DR007, CN_POLICY_RATE_7D]
+    operation: difference
+    formula: "CN_DR007 - CN_POLICY_RATE_7D"
+    unit: percent
+    frequency: daily
+    category: macro
+    owner: MARCO
+    role: liquidity_policy_diagnostic
+    production_enabled: false
+  US_10Y2Y_SPREAD:
+    legs: [US_TREASURY_NOMINAL_YIELD_10Y, US_TREASURY_NOMINAL_YIELD_2Y]
+    operation: difference
+    formula: "US_10Y - US_2Y"
+    unit: percent
+    frequency: daily
+    category: macro
+    owner: MARCO
+    role: macro_regime_curve_state
+    production_enabled: false
+
 series:
   # --- OECD (V1.2A Batch A chain: CLI / CPI / production / retail / exports)
   CHN_CLI:
@@ -255,6 +277,81 @@ series:
     splice_policy: overlap_required
     parser_contract: "Treasury yearly CSV -> MM/DD/YYYY, 10 YR percent; FRED overlap >= 60 trading days before merge"
 
+  US_INITIAL_CLAIMS:
+    primary: fred
+    provider_code: "ICSA"
+    frequency: weekly
+    category: macro
+    max_staleness_days: 14
+    update_policy:
+      mode: replace_window
+    freshness:
+      # Conservative publication boundary; Cross #37 accepts the normal
+      # source/PIT evidence, but formal admission still requires actual
+      # release-calendar and live-source evidence.
+      expected_release_lag_days: 7
+      availability_rule: end_of_day_after_lag
+      publication_timezone: America/New_York
+    original_source: U.S. Department of Labor initial unemployment insurance claims via FRED ICSA access layer
+    observation_start: "1967-01-07"
+    splice_policy: forbid
+    parser_contract: "FRED ICSA observations -> weekly reference date and persons count; missing values remain missing"
+
+  US_CORE_CPI:
+    primary: fred
+    provider_code: "CPILFESL"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 45
+    update_policy:
+      mode: replace_window
+    freshness:
+      expected_release_lag_days: 15
+      availability_rule: end_of_day_after_lag
+      publication_timezone: America/New_York
+    original_source: U.S. Bureau of Labor Statistics core CPI index (seasonally adjusted) via FRED CPILFESL
+    observation_start: "1957-01-31"
+    splice_policy: forbid
+    parser_contract: "FRED CPILFESL observations -> monthly reference date and raw index level; no Core PCE substitution"
+
+  US_TREASURY_NOMINAL_YIELD_10Y:
+    primary: fred
+    fallback: wind_manual
+    provider_code: "DGS10"
+    frequency: daily
+    category: macro
+    max_staleness_days: 7
+    update_policy:
+      mode: replace_window
+    freshness:
+      expected_release_lag_days: 1
+      availability_rule: end_of_day_after_lag
+      publication_timezone: America/New_York
+    original_source: U.S. Treasury nominal 10-year constant-maturity yield via FRED DGS10; Wind is the existing manual mapping fallback
+    observation_start: "1962-01-02"
+    splice_policy: forbid
+    parser_contract: "FRED DGS10 observations -> daily percent; existing Wind mapping may target the same canonical id"
+    manual_instructions: >
+      Use the existing config/wind_mapping_us_nominal_yield.yaml mapping for
+      美国:国债收益率:10年; do not create another 10Y canonical id.
+
+  US_TREASURY_NOMINAL_YIELD_2Y:
+    primary: fred
+    provider_code: "DGS2"
+    frequency: daily
+    category: macro
+    max_staleness_days: 7
+    update_policy:
+      mode: replace_window
+    freshness:
+      expected_release_lag_days: 1
+      availability_rule: end_of_day_after_lag
+      publication_timezone: America/New_York
+    original_source: U.S. Treasury nominal 2-year constant-maturity yield via FRED DGS2
+    observation_start: "1976-06-01"
+    splice_policy: forbid
+    parser_contract: "FRED DGS2 observations -> daily percent; no guessed Wind proxy"
+
   USD_BROAD:
     primary: fred
     fallback: fed_h10
@@ -300,6 +397,28 @@ series:
     parser_contract: "PBOC LPR announcement HTML -> announcement_date and LPR_5Y percent"
 
   # --- NBS news-release parsing (V1.2C, P2) -------------------------------
+  CN_PMI:
+    primary: nbs
+    fallback: wind_manual
+    provider_code: "PMI_HEADLINE"
+    frequency: monthly
+    category: macro
+    max_staleness_days: 60
+    freshness:
+      # Conservative boundary retained after the #37 evidence handoff; see
+      # docs/audits/EXTDATA_W1_MACRO_OWNERSHIP_BASELINE_20260905.md.
+      expected_release_lag_days: 31
+      availability_rule: end_of_day_after_lag
+      publication_timezone: Asia/Shanghai
+    original_source: NBS China manufacturing PMI headline index from the monthly news release
+    observation_start: "2005-01-31"
+    splice_policy: forbid
+    parser_contract: "NBS PMI release HTML -> reference month and headline manufacturing PMI index"
+    manual_instructions: >
+      Export the existing manufacturing PMI headline column (PMI) from Wind to
+      data/inbox/wind/ and run python scripts/import_wind.py <file>; the existing
+      config/wind_mapping.yaml PMI mapping targets CN_PMI.
+
   CHN_PMI_NEW_ORDERS:
     primary: nbs
     fallback: wind_manual
@@ -428,6 +547,8 @@ series:
     max_staleness_days: 45
     freshness:
       expected_release_lag_days: 11
+      availability_rule: end_of_day_after_lag
+      publication_timezone: Asia/Shanghai
     original_source: NBS producer price index YoY via AKShare (access layer)
 
   CN_M2_YOY:
@@ -528,6 +649,8 @@ series:
     max_staleness_days: 7
     freshness:
       expected_release_lag_days: 0
+      availability_rule: end_of_day_after_lag
+      publication_timezone: Asia/Shanghai
     original_source: >
       ChinaMoney interbank repo chart DR007 (live; the rolling file only keeps
       ~66 trading days). Fallback/backfill: AKShare repo_rate_hist FDR007
@@ -544,6 +667,8 @@ series:
       mode: replace_window
     freshness:
       expected_release_lag_days: 0
+      availability_rule: end_of_day_after_lag
+      publication_timezone: Asia/Shanghai
     original_source: >
       PBOC 7-day reverse repo operation rate (open-market transaction
       announcements). Fallback: committed step file data/manual_series/

@@ -25,6 +25,7 @@ from macro_compass.data_sources.base import (
     DataSourceAdapter,
     FetchError,
     build_canonical_frame,
+    temporal_metadata_for_spec,
 )
 
 
@@ -93,6 +94,7 @@ class ManualSeriesAdapter(DataSourceAdapter):
             values = [values[i] for i in keep]
         if not dates:
             raise FetchError(f"manual series '{series_id}' has no rows after {start_date}")
+        temporal = temporal_metadata_for_spec(spec, dates)
         return build_canonical_frame(
             series_id,
             dates,
@@ -103,4 +105,5 @@ class ManualSeriesAdapter(DataSourceAdapter):
             unit="%",
             frequency=spec.frequency,
             category=spec.category,
+            **temporal,
         )

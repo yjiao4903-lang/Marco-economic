@@ -14,6 +14,12 @@ Layout:
     nyfed.py      - NY Fed reference rates (SOFR)
     chicagofed.py - Chicago Fed NFCI / ANFCI
     wind_manual.py - manual Wind exports (always MANUAL_REQUIRED)
+
+W1 PIT note:
+    Evidence-bearing release timestamps must come from an actual source
+    calendar or an equally strict frozen-vintage timestamp. Configured
+    expected lags remain freshness metadata and are never converted into
+    ``release_at`` from an observation/reference date.
 """
 
 from macro_compass.data_sources.base import (
@@ -27,10 +33,19 @@ from macro_compass.data_sources.base import (
 from macro_compass.data_sources.registry import (
     AdapterRegistry,
     DataSourcesConfig,
+    DerivedSeriesSpec,
     ProviderSpec,
     SeriesSource,
     load_data_sources_config,
 )
+from macro_compass.data_sources.derived import (
+    DerivedSeriesError,
+    derive_cn_dr007_spread,
+    derive_configured_series,
+    derive_difference,
+    derive_us_10y2y_spread,
+)
+from macro_compass.data_sources.pit_release import actual_release_metadata
 from macro_compass.data_sources.updater import (
     FetchOutcome,
     UpdateReport,
@@ -48,12 +63,19 @@ __all__ = [
     "ProviderUnavailable",
     "AdapterRegistry",
     "DataSourcesConfig",
+    "DerivedSeriesSpec",
     "ProviderSpec",
     "SeriesSource",
     "load_data_sources_config",
+    "DerivedSeriesError",
+    "derive_cn_dr007_spread",
+    "derive_configured_series",
+    "derive_difference",
+    "derive_us_10y2y_spread",
     "FetchOutcome",
     "UpdateReport",
     "load_fetch_state",
     "run_update",
     "save_fetch_state",
+    "actual_release_metadata",
 ]

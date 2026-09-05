@@ -8,6 +8,11 @@ import pandas as pd
 
 from macro_compass.config import IndicatorConfig
 
+# Keep this dependency-free: data_sources.base imports the normalizer through
+# the ingestion package, so importing the base module here would create a
+# package-initialization cycle.
+TEMPORAL_COLUMNS = ("observation_date", "release_at", "available_at")
+
 
 @dataclass
 class ValidationReport:
@@ -72,6 +77,80 @@ def validate_canonical(
     bad_values = int(values.isna().sum())
     if bad_values:
         report.errors.append(f"{bad_values} row(s) have non-numeric values")
+
+    temporal_present = set(TEMPORAL_COLUMNS).intersection(canonical.columns)
+    if temporal_present:
+        missing_temporal = sorted(set(TEMPORAL_COLUMNS) - set(canonical.columns))
+        if missing_temporal:
+            report.errors.append(
+                "temporal provenance is partial; missing column(s): "
+                f"{missing_temporal}"
+            )
+        else:
+            parsed_observation = pd.to_datetime(
+                canonical["observation_date"], errors="coerce"
+            )
+            parsed_release = pd.to_datetime(
+                canonical["release_at"], errors="coerce", utc=True
+            )
+            parsed_available = pd.to_datetime(
+                canonical["available_at"], errors="coerce", utc=True
+            )
+            for name, parsed in (
+                ("observation_date", parsed_observation),
+                ("release_at", parsed_release),
+                ("available_at", parsed_available),
+            ):
+                invalid = int(parsed.isna().sum())
+                if invalid:
+                    report.errors.append(
+                        f"{invalid} row(s) have invalid {name} temporal metadata"
+                    )
+
+            # New temporal rows must carry an explicit timezone.  UTC parsing
+            # above is used only for comparison; it must not turn a naive
+            # timestamp into an apparently safe publication time.
+            for name in ("release_at", "available_at"):
+                naive = 0
+                for value in canonical[name].dropna():
+                    try:
+                        timestamp = pd.Timestamp(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if timestamp.tzinfo is None:
+                        naive += 1
+                if naive:
+                    report.errors.append(
+                        f"{naive} row(s) have timezone-naive {name}; "
+                        "causal availability requires an explicit timezone"
+                    )
+
+            date_values = pd.to_datetime(canonical["date"], errors="coerce").dt.date
+            observation_values = parsed_observation.dt.date
+            mismatched_observation = (
+                date_values.notna()
+                & observation_values.notna()
+                & date_values.ne(observation_values)
+            )
+            if mismatched_observation.any():
+                report.errors.append(
+                    f"{int(mismatched_observation.sum())} row(s) have observation_date "
+                    "different from canonical date"
+                )
+
+            invalid_order = parsed_available < parsed_release
+            if invalid_order.any():
+                report.errors.append(
+                    f"{int(invalid_order.sum())} row(s) have available_at before release_at"
+                )
+
+            canonical_start = pd.to_datetime(canonical["date"], errors="coerce", utc=True)
+            before_observation = parsed_available < canonical_start
+            if before_observation.any():
+                report.errors.append(
+                    f"{int(before_observation.sum())} row(s) have available_at before "
+                    "the observation date"
+                )
 
     dup_mask = canonical.duplicated(subset=["series_id", "date"], keep=False)
     if dup_mask.any():

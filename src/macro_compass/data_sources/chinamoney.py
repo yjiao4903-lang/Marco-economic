@@ -21,6 +21,7 @@ from macro_compass.data_sources.base import (
     build_canonical_frame,
     build_url,
     http_get,
+    temporal_metadata_for_spec,
 )
 
 CCPR_URL = "https://www.chinamoney.com.cn/ags/ms/cm-u-bk-ccpr/CcprHisNew"
@@ -197,6 +198,7 @@ class ChinaMoneyAdapter(DataSourceAdapter):
         dates, values = parse_dr007_csv(text, code)
         if not dates:
             raise FetchError(f"ChinaMoney repo chart returned no rows for '{code}'")
+        temporal = temporal_metadata_for_spec(spec, dates)
         return build_canonical_frame(
             series_id,
             dates,
@@ -207,6 +209,7 @@ class ChinaMoneyAdapter(DataSourceAdapter):
             unit="%",
             frequency=spec.frequency,
             category=spec.category,
+            **temporal,
         )
 
     def fetch(self, series_id: str, start_date=None, end_date=None) -> pd.DataFrame:

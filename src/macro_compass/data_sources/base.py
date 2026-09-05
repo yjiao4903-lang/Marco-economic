@@ -22,10 +22,10 @@ broken provider can never abort the whole update run (failure isolation).
 
 from __future__ import annotations
 
-import urllib.error
-import urllib.request
-import urllib.parse
 import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
@@ -35,6 +35,7 @@ import pandas as pd
 from macro_compass.ingestion.normalizer import CANONICAL_COLUMNS
 
 CANONICAL_REQUIRED = ("series_id", "date", "value", "category")
+TEMPORAL_COLUMNS = ("observation_date", "release_at", "available_at")
 
 
 class FetchStatus(str, Enum):
@@ -64,8 +65,6 @@ class ManualFetchRequired(DataSourceError):
 
 
 DEFAULT_HEADERS = {
-    # Keep the UA a plain browser string: several CN endpoints (ChinaMoney,
-    # SAFE, PBOC) WAF-block requests carrying a bot-style UA suffix.
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -83,11 +82,7 @@ def http_get(
     data: str | bytes | None = None,
     encoding: str | None = None,
 ) -> str:
-    """HTTP GET (or POST when ``data`` is given) returning the body as text.
-
-    Raises ``FetchError`` with the original cause on any network / HTTP
-    failure so callers never see raw urllib exceptions.
-    """
+    """HTTP GET (or POST when ``data`` is given) returning the body as text."""
     merged = {**DEFAULT_HEADERS, **(headers or {})}
     if isinstance(data, str):
         data = data.encode("utf-8")
@@ -122,13 +117,7 @@ def build_url(base: str, params: dict | None = None) -> str:
 
 
 class DataSourceAdapter(ABC):
-    """Common adapter interface.
-
-    Concrete adapters are constructed with their provider spec and the
-    mapping of the series routed to them (``series_specs``), so ``fetch``
-    keeps the simple spec-defined signature ``fetch(series_id, start_date,
-    end_date)`` and resolves the provider-specific code itself.
-    """
+    """Common adapter interface."""
 
     def __init__(self, provider_spec, series_specs: dict, provider_id: str = ""):
         self.provider_spec = provider_spec
@@ -160,12 +149,7 @@ class DataSourceAdapter(ABC):
         start_date=None,
         end_date=None,
     ) -> pd.DataFrame:
-        """Return canonical-compatible rows for ``series_id``.
-
-        Must contain at least ``series_id / date / value / category`` and
-        only observations within ``[start_date, end_date]`` (when given).
-        Raises ``DataSourceError`` subclasses on failure.
-        """
+        """Return canonical-compatible rows for ``series_id``."""
 
 
 def build_canonical_frame(
@@ -180,22 +164,63 @@ def build_canonical_frame(
     frequency: str,
     category: str,
     import_time: pd.Timestamp | None = None,
+    observation_dates=None,
+    release_at=None,
+    available_at=None,
 ) -> pd.DataFrame:
-    """Assemble adapter output into the canonical long-format layout.
-
-    Drops rows without a parseable date or value and returns rows sorted by
-    date with exactly the canonical column order.
-    """
+    """Assemble adapter output into the canonical long-format layout."""
     import_time = import_time or pd.Timestamp.now()
+
+    date_values = list(dates)
+    value_values = list(values)
+    if len(date_values) != len(value_values):
+        raise ValueError(
+            f"dates and values must have equal length, got {len(date_values)} and "
+            f"{len(value_values)}"
+        )
+
+    temporal_enabled = any(
+        value is not None for value in (observation_dates, release_at, available_at)
+    )
+    if temporal_enabled and (release_at is None or available_at is None):
+        raise ValueError(
+            "observation provenance requires both release_at and available_at"
+        )
+
+    def _aligned(values_arg, default, label):
+        values_list = list(default if values_arg is None else values_arg)
+        if len(values_list) != len(date_values):
+            raise ValueError(
+                f"{label} must have length {len(date_values)}, got {len(values_list)}"
+            )
+        return values_list
 
     frame = pd.DataFrame(
         {
             "series_id": series_id,
-            "date": pd.to_datetime(pd.Series(list(dates)), errors="coerce"),
-            "value": pd.to_numeric(pd.Series(list(values), dtype="object"), errors="coerce"),
+            "date": pd.to_datetime(pd.Series(date_values), errors="coerce"),
+            "value": pd.to_numeric(pd.Series(value_values, dtype="object"), errors="coerce"),
         }
     )
+    if temporal_enabled:
+        frame["observation_date"] = pd.to_datetime(
+            pd.Series(_aligned(observation_dates, date_values, "observation_dates")),
+            errors="coerce",
+        )
+        frame["release_at"] = pd.to_datetime(
+            pd.Series(_aligned(release_at, [None] * len(date_values), "release_at")),
+            errors="coerce",
+            utc=True,
+        )
+        frame["available_at"] = pd.to_datetime(
+            pd.Series(_aligned(available_at, [None] * len(date_values), "available_at")),
+            errors="coerce",
+            utc=True,
+        )
+
     frame = frame.dropna(subset=["date", "value"])
+    if temporal_enabled:
+        frame = frame.dropna(subset=list(TEMPORAL_COLUMNS))
     if frame.empty:
         return frame
 
@@ -210,4 +235,75 @@ def build_canonical_frame(
     frame["category"] = category
     frame["file_hash"] = None
 
-    return frame[CANONICAL_COLUMNS].sort_values("date").reset_index(drop=True)
+    columns = list(CANONICAL_COLUMNS)
+    if temporal_enabled:
+        columns.extend(TEMPORAL_COLUMNS)
+    return frame[columns].sort_values("date").reset_index(drop=True)
+
+
+def temporal_metadata_for_spec(
+    spec,
+    dates,
+    *,
+    release_at=None,
+    available_at=None,
+) -> dict:
+    """Return PIT metadata only from explicit source-calendar evidence.
+
+    ``expected_release_lag_days`` is freshness metadata, not release evidence.
+    It is intentionally never combined with an observation/reference date.
+    """
+    freshness = getattr(spec, "freshness", None)
+    rule = getattr(freshness, "availability_rule", "unknown")
+    if rule not in (None, "unknown", "end_of_day_after_lag"):
+        raise FetchError(f"unsupported availability rule: {rule!r}")
+
+    observation_values = list(dates)
+    if rule in (None, "unknown") and release_at is None and available_at is None:
+        return {}
+    if release_at is None:
+        raise FetchError(
+            "actual release-calendar evidence required; observation-date lag "
+            "cannot populate PIT release_at"
+        )
+
+    release_values = list(release_at)
+    available_values = release_values if available_at is None else list(available_at)
+    if len(release_values) != len(observation_values):
+        raise FetchError(
+            f"release_at must have length {len(observation_values)}, got {len(release_values)}"
+        )
+    if len(available_values) != len(observation_values):
+        raise FetchError(
+            f"available_at must have length {len(observation_values)}, got {len(available_values)}"
+        )
+
+    observations = []
+    releases = []
+    availabilities = []
+    for raw_observation, raw_release, raw_available in zip(
+        observation_values, release_values, available_values
+    ):
+        try:
+            observation = pd.Timestamp(raw_observation)
+            release = pd.Timestamp(raw_release)
+            availability = pd.Timestamp(raw_available)
+        except (TypeError, ValueError) as exc:
+            raise FetchError("unparseable PIT temporal evidence") from exc
+        if pd.isna(observation) or pd.isna(release) or pd.isna(availability):
+            raise FetchError("PIT temporal evidence cannot be missing")
+        if release.tzinfo is None or availability.tzinfo is None:
+            raise FetchError("PIT release_at/available_at must be timezone-aware")
+        release_utc = release.tz_convert("UTC")
+        availability_utc = availability.tz_convert("UTC")
+        if availability_utc < release_utc:
+            raise FetchError("available_at cannot precede actual release_at")
+        observations.append(observation.date())
+        releases.append(release_utc)
+        availabilities.append(availability_utc)
+
+    return {
+        "observation_dates": observations,
+        "release_at": releases,
+        "available_at": availabilities,
+    }
