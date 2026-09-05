@@ -22,24 +22,19 @@ broken provider can never abort the whole update run (failure isolation).
 
 from __future__ import annotations
 
-import urllib.error
-import urllib.request
-import urllib.parse
 import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
 from macro_compass.ingestion.normalizer import CANONICAL_COLUMNS
 
 CANONICAL_REQUIRED = ("series_id", "date", "value", "category")
-# Optional provenance columns used by sources whose publication timing is
-# explicitly configured.  The legacy Wind normalizer keeps the original
-# CANONICAL_COLUMNS surface; source adapters opt into these fields so existing
-# contract consumers are not widened by this task.
 TEMPORAL_COLUMNS = ("observation_date", "release_at", "available_at")
 
 
@@ -70,8 +65,6 @@ class ManualFetchRequired(DataSourceError):
 
 
 DEFAULT_HEADERS = {
-    # Keep the UA a plain browser string: several CN endpoints (ChinaMoney,
-    # SAFE, PBOC) WAF-block requests carrying a bot-style UA suffix.
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -89,11 +82,7 @@ def http_get(
     data: str | bytes | None = None,
     encoding: str | None = None,
 ) -> str:
-    """HTTP GET (or POST when ``data`` is given) returning the body as text.
-
-    Raises ``FetchError`` with the original cause on any network / HTTP
-    failure so callers never see raw urllib exceptions.
-    """
+    """HTTP GET (or POST when ``data`` is given) returning the body as text."""
     merged = {**DEFAULT_HEADERS, **(headers or {})}
     if isinstance(data, str):
         data = data.encode("utf-8")
@@ -128,13 +117,7 @@ def build_url(base: str, params: dict | None = None) -> str:
 
 
 class DataSourceAdapter(ABC):
-    """Common adapter interface.
-
-    Concrete adapters are constructed with their provider spec and the
-    mapping of the series routed to them (``series_specs``), so ``fetch``
-    keeps the simple spec-defined signature ``fetch(series_id, start_date,
-    end_date)`` and resolves the provider-specific code itself.
-    """
+    """Common adapter interface."""
 
     def __init__(self, provider_spec, series_specs: dict, provider_id: str = ""):
         self.provider_spec = provider_spec
@@ -166,12 +149,7 @@ class DataSourceAdapter(ABC):
         start_date=None,
         end_date=None,
     ) -> pd.DataFrame:
-        """Return canonical-compatible rows for ``series_id``.
-
-        Must contain at least ``series_id / date / value / category`` and
-        only observations within ``[start_date, end_date]`` (when given).
-        Raises ``DataSourceError`` subclasses on failure.
-        """
+        """Return canonical-compatible rows for ``series_id``."""
 
 
 def build_canonical_frame(
@@ -190,13 +168,7 @@ def build_canonical_frame(
     release_at=None,
     available_at=None,
 ) -> pd.DataFrame:
-    """Assemble adapter output into the canonical long-format layout.
-
-    Drops rows without a parseable date or value and returns rows sorted by
-    date with exactly the canonical column order.  When temporal provenance
-    is supplied, all three temporal columns are emitted and invalid temporal
-    rows are dropped as a fail-closed boundary.
-    """
+    """Assemble adapter output into the canonical long-format layout."""
     import_time = import_time or pd.Timestamp.now()
 
     date_values = list(dates)
@@ -269,55 +241,69 @@ def build_canonical_frame(
     return frame[columns].sort_values("date").reset_index(drop=True)
 
 
-def temporal_metadata_for_spec(spec, dates) -> dict:
-    """Build conservative publication metadata from an explicit source rule.
+def temporal_metadata_for_spec(
+    spec,
+    dates,
+    *,
+    release_at=None,
+    available_at=None,
+) -> dict:
+    """Return PIT metadata only from explicit source-calendar evidence.
 
-    The project does not infer release timing from an observation date.  A
-    configured ``end_of_day_after_lag`` rule means the row is considered
-    available only at the end of the configured publication day in the
-    configured IANA timezone.  This is a deterministic safety boundary, not
-    a claim that the exact source release timestamp was observed.
+    ``expected_release_lag_days`` is freshness metadata, not release evidence.
+    It is intentionally never combined with an observation/reference date.
     """
     freshness = getattr(spec, "freshness", None)
     rule = getattr(freshness, "availability_rule", "unknown")
-    if rule in (None, "unknown"):
-        return {}
-    if rule != "end_of_day_after_lag":
+    if rule not in (None, "unknown", "end_of_day_after_lag"):
         raise FetchError(f"unsupported availability rule: {rule!r}")
 
-    lag_days = getattr(freshness, "expected_release_lag_days", None)
-    if lag_days is None:
-        raise FetchError(
-            "availability rule end_of_day_after_lag requires expected_release_lag_days"
-        )
-    timezone_name = getattr(freshness, "publication_timezone", "UTC")
-    try:
-        timezone = ZoneInfo(str(timezone_name))
-    except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise FetchError(f"invalid publication timezone: {timezone_name!r}") from exc
-
     observation_values = list(dates)
-    observation_dates = []
-    boundaries = []
-    for raw_date in observation_values:
-        try:
-            timestamp = pd.Timestamp(raw_date)
-        except (TypeError, ValueError) as exc:
-            raise FetchError(f"unparseable observation date: {raw_date!r}") from exc
-        if pd.isna(timestamp):
-            raise FetchError(f"unparseable observation date: {raw_date!r}")
-        observation_date = timestamp.date()
-        observation_dates.append(observation_date)
-        local_start = pd.Timestamp(observation_date).tz_localize(timezone)
-        local_end = (
-            local_start
-            + pd.Timedelta(days=int(lag_days) + 1)
-            - pd.Timedelta(nanoseconds=1)
+    if rule in (None, "unknown") and release_at is None and available_at is None:
+        return {}
+    if release_at is None:
+        raise FetchError(
+            "actual release-calendar evidence required; observation-date lag "
+            "cannot populate PIT release_at"
         )
-        boundaries.append(local_end.tz_convert("UTC"))
+
+    release_values = list(release_at)
+    available_values = release_values if available_at is None else list(available_at)
+    if len(release_values) != len(observation_values):
+        raise FetchError(
+            f"release_at must have length {len(observation_values)}, got {len(release_values)}"
+        )
+    if len(available_values) != len(observation_values):
+        raise FetchError(
+            f"available_at must have length {len(observation_values)}, got {len(available_values)}"
+        )
+
+    observations = []
+    releases = []
+    availabilities = []
+    for raw_observation, raw_release, raw_available in zip(
+        observation_values, release_values, available_values
+    ):
+        try:
+            observation = pd.Timestamp(raw_observation)
+            release = pd.Timestamp(raw_release)
+            availability = pd.Timestamp(raw_available)
+        except (TypeError, ValueError) as exc:
+            raise FetchError("unparseable PIT temporal evidence") from exc
+        if pd.isna(observation) or pd.isna(release) or pd.isna(availability):
+            raise FetchError("PIT temporal evidence cannot be missing")
+        if release.tzinfo is None or availability.tzinfo is None:
+            raise FetchError("PIT release_at/available_at must be timezone-aware")
+        release_utc = release.tz_convert("UTC")
+        availability_utc = availability.tz_convert("UTC")
+        if availability_utc < release_utc:
+            raise FetchError("available_at cannot precede actual release_at")
+        observations.append(observation.date())
+        releases.append(release_utc)
+        availabilities.append(availability_utc)
 
     return {
-        "observation_dates": observation_dates,
-        "release_at": boundaries,
-        "available_at": boundaries.copy(),
+        "observation_dates": observations,
+        "release_at": releases,
+        "available_at": availabilities,
     }
