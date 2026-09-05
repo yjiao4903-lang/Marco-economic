@@ -4,9 +4,10 @@
 **Repository**: `yjiao4903-lang/Marco-economic`
 **Task**: Marco Issue #4 / `REQ-MARCO-EXTDATA-W1-20260905.md`
 **Gate**: **CONDITIONAL** — the owner/provider routes, parser gates, temporal
-metadata plumbing, and isolated derived diagnostics are implemented. Real-data
-readiness and exact release-time evidence remain **DATA_BLOCKED** pending the
-source/PIT work in Cross Issue #37.
+metadata plumbing, and isolated derived diagnostics are implemented. Cross #37
+has accepted the source-definition/PIT evidence baseline, but real-data
+readiness and formal production admission remain **DATA_BLOCKED** pending the
+remaining acceptance and live-evidence gates.
 
 ## Baseline and scope
 
@@ -32,10 +33,10 @@ publication timestamp to real-data readiness.
 
 | canonical | registry path | provider route | live status | fallback | Cross duplicate / compatibility | action |
 |---|---|---|---|---|---|---|
-| `CN_PMI` | `config/indicators.yaml` (`CN_PMI`) | `data_sources.yaml` (`CN_PMI`): NBS `PMI_HEADLINE`; parser `nbs.py:parse_pmi_headline` | **CONDITIONAL** — route and offline parser are present; no live refresh accepted | Wind manual export through the existing `config/wind_mapping.yaml` `PMI` mapping | No `CN_PMI` entry in the inspected Cross `MACRO_SERIES`; keep Cross consumers compatibility-only if later introduced | **KEEP/UPGRADE** |
-| `CN_PPI_YOY` | `config/indicators.yaml` (`CN_PPI_YOY`) | `data_sources.yaml` (`CN_PPI_YOY`): AKShare access layer; schema gate `akshare_source.py:parse_monthly_macro_frame` | **CONDITIONAL** — YoY percent route is explicit; source health/live response remains unverified | Wind manual route remains explicit; no index-level substitution | Cross `src/cross_asset/ingestion/evidence_shadow.py:MACRO_SERIES` contains legacy `CN_PPI`; it is not a second Marco canonical definition | **KEEP/UPGRADE** |
-| `US_INITIAL_CLAIMS` | `config/indicators.yaml` (`US_INITIAL_CLAIMS`) | `data_sources.yaml` (`US_INITIAL_CLAIMS`): FRED provider code `ICSA` | **CONDITIONAL** — mapping/parser path is implemented; live response and release calendar remain unverified | None; provider failure is surfaced | Cross `src/cross_asset/providers/fred.py:SERIES` and `src/cross_asset/reports/research_admission.py:SERIES` retain an access/consumer compatibility mapping | **ADD/PROMOTE** |
-| `US_CORE_CPI` | `config/indicators.yaml` (`US_CORE_CPI`) | `data_sources.yaml` (`US_CORE_CPI`): FRED provider code `CPILFESL`; raw index level | **CONDITIONAL** — route is explicit; live response and revision evidence remain unverified | None; Core PCE is not an allowed fallback | Cross FRED provider code `CPILFESL` is an access compatibility entry; no separate Cross `US_CORE_CPI` production definition was found in the inspected paths | **ADD/PROMOTE** |
+| `CN_PMI` | `config/indicators.yaml` (`CN_PMI`) | `data_sources.yaml` (`CN_PMI`): NBS `PMI_HEADLINE`; parser `nbs.py:parse_pmi_headline` | **CONDITIONAL** — route and offline parser are present; no live refresh accepted; #37 binds NBS semantics/release-calendar evidence | Wind manual export through the existing `config/wind_mapping.yaml` `PMI` mapping | No `CN_PMI` entry in the inspected Cross `MACRO_SERIES`; keep Cross consumers compatibility-only if later introduced | **KEEP/UPGRADE** |
+| `CN_PPI_YOY` | `config/indicators.yaml` (`CN_PPI_YOY`) | `data_sources.yaml` (`CN_PPI_YOY`): AKShare access layer; schema gate `akshare_source.py:parse_monthly_macro_frame` | **CONDITIONAL** — YoY percent route is explicit; #37 binds NBS semantics/release-calendar evidence, but source health/live response is unverified | Wind manual route remains explicit; no index-level substitution | Cross `src/cross_asset/ingestion/evidence_shadow.py:MACRO_SERIES` contains legacy `CN_PPI`; it is not a second Marco canonical definition | **KEEP/UPGRADE** |
+| `US_INITIAL_CLAIMS` | `config/indicators.yaml` (`US_INITIAL_CLAIMS`) | `data_sources.yaml` (`US_INITIAL_CLAIMS`): FRED provider code `ICSA` | **CONDITIONAL** — mapping/parser path is implemented; #37 binds week-ending and normal release timing, while live response and actual historical calendar remain unverified | None; provider failure is surfaced | Cross `src/cross_asset/providers/fred.py:SERIES` and `src/cross_asset/reports/research_admission.py:SERIES` retain an access/consumer compatibility mapping | **ADD/PROMOTE** |
+| `US_CORE_CPI` | `config/indicators.yaml` (`US_CORE_CPI`) | `data_sources.yaml` (`US_CORE_CPI`): FRED provider code `CPILFESL`; raw index level | **CONDITIONAL** — route is explicit; #37 binds the raw index semantic, but live response and vintage/revision handling remain unverified | None; Core PCE is not an allowed fallback | Cross FRED provider code `CPILFESL` is an access compatibility entry; no separate Cross `US_CORE_CPI` production definition was found in the inspected paths | **ADD/PROMOTE** |
 
 The nominal Treasury legs used by the second diagnostic are also explicit:
 
@@ -59,8 +60,9 @@ declared lag, then treats the end of that date in the configured IANA timezone
 as a conservative availability boundary. The resulting `release_at` and
 `available_at` are deterministic safety boundaries, not assertions that the
 exact official release timestamp was observed. The observation date is never
-used as an inferred publication timestamp. Exact source identity, holiday
-release behavior, and publication timing remain subject to Cross #37.
+used as an inferred publication timestamp. Cross #37 now supplies the accepted
+source-definition and release/PIT evidence baseline; exact historical
+calendar/vintage mapping and live source admission remain unverified here.
 
 `src/macro_compass/ingestion/validator.py` rejects partial temporal metadata,
 timezone-naive release/availability timestamps, mismatched observation dates,
@@ -96,6 +98,7 @@ Offline acceptance is in `tests/data_sources/test_w1_macro.py` and covers
 registry mapping, NBS PMI headline parsing, malformed PPI schema, conservative
 temporal boundaries, FRED mapping, policy publication before/after cutoffs,
 exact-date Treasury joining, missing overlap, and unit mismatch. The tests do
-not establish provider entitlement, endpoint stability, official release
-calendars, holiday behavior, or real-data coverage. Those are intentionally
-left conditional until the evidence package in Cross #37 is resolved.
+not establish provider entitlement, endpoint stability, exact historical
+release/vintage mapping, holiday exceptions, or real-data coverage. Cross #37's
+evidence package is accepted as the source-definition/PIT baseline; the
+remaining live and formal-admission gates keep this branch conditional.

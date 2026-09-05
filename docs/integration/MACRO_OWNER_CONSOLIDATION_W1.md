@@ -1,13 +1,14 @@
 # Marco Macro Owner Consolidation — W1
 
 **As-of**: 2026-09-05
-**Status**: **CONDITIONAL / Marco capability complete; Cross migration pending**
+**Status**: **CONDITIONAL / Marco capability complete; Cross consumer migration pending**
 
 This note records the boundary between the Marco macro-production owner and
 Cross's existing compatibility consumers. It does not change the Integration
 Contract v1 schema, add JSON fields, delete Cross ingestion, or authorize a
-merge. The source/PIT questions that still block a real-data readiness claim
-are tracked in Cross Issue #37.
+merge. Cross #37 has accepted the source-definition and release/PIT evidence
+baseline; live source evidence, formal admission, and a reviewed consumer
+migration still block a real-data readiness claim.
 
 ## Canonical ownership map
 
@@ -23,6 +24,24 @@ are tracked in Cross Issue #37.
 The Cross IDs above are compatibility surfaces, not permission to delete or
 rewrite Cross code in this Marco PR. A future migration must establish the
 consumer's required fields and PIT semantics before replacing an ID.
+
+## Current evidence boundary
+
+Cross #37 is the accepted source/PIT evidence reference for this W1 handoff:
+
+- NBS remains canonical for `CN_PMI` and `CN_PPI_YOY`; the configured
+  conservative lag remains a safety boundary rather than an exact release
+  timestamp claim.
+- `US_INITIAL_CLAIMS` remains FRED `ICSA`, with week-ending observation
+  semantics and actual holiday release dates still required for historical
+  admission.
+- `US_CORE_CPI` remains raw FRED `CPILFESL` index level; strict replay must
+  account for seasonal-factor/vintage revisions.
+- The two Treasury legs must each satisfy their own causal cutoff before
+  `US_10Y2Y_SPREAD` is visible.
+
+This evidence baseline does not make any route live-ready or approved for
+Cross's formal consumers.
 
 ## Target consumer path
 
@@ -55,5 +74,5 @@ positioning remains a diagnostic and is not converted into directional alpha.
 - Existing factor weights, structural/fragility semantics, strategic weights,
   and allocation constraints are unchanged.
 - Cross legacy compatibility routes are not deleted.
-- No fixture is treated as real data, and no source/PIT uncertainty is resolved
-  by guessing.
+- No fixture is treated as real data, and no remaining live/admission
+  uncertainty is resolved by guessing.

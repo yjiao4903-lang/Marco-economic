@@ -286,8 +286,9 @@ series:
     update_policy:
       mode: replace_window
     freshness:
-      # Conservative publication boundary; exact release calendar is tracked
-      # separately in Cross #37 before real-data readiness is claimed.
+      # Conservative publication boundary; Cross #37 accepts the normal
+      # source/PIT evidence, but formal admission still requires actual
+      # release-calendar and live-source evidence.
       expected_release_lag_days: 7
       availability_rule: end_of_day_after_lag
       publication_timezone: America/New_York
@@ -404,7 +405,7 @@ series:
     category: macro
     max_staleness_days: 60
     freshness:
-      # Conservative boundary pending exact release-time evidence; see
+      # Conservative boundary retained after the #37 evidence handoff; see
       # docs/audits/EXTDATA_W1_MACRO_OWNERSHIP_BASELINE_20260905.md.
       expected_release_lag_days: 31
       availability_rule: end_of_day_after_lag
