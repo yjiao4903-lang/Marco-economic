@@ -29,7 +29,12 @@ CREATE TABLE IF NOT EXISTS series_data (
     source      VARCHAR,
     source_file VARCHAR,
     import_time TIMESTAMP,
-    file_hash   VARCHAR
+    file_hash   VARCHAR,
+    observation_date DATE,
+    -- Stored as UTC-naive in the rebuildable cache; canonical parquet keeps
+    -- the explicit UTC-aware values used by PIT calculations.
+    release_at  TIMESTAMP,
+    available_at TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS series_metadata (
     series_id   VARCHAR PRIMARY KEY,
@@ -59,6 +64,20 @@ class DuckDBStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = duckdb.connect(str(self.db_path))
         self.conn.execute(SCHEMA_SQL)
+        # Existing local caches predate temporal provenance.  DuckDB is only
+        # a rebuildable cache, so add the nullable columns in place when an
+        # old cache is reused; canonical parquet remains the durable source.
+        existing = {
+            row[1]
+            for row in self.conn.execute("PRAGMA table_info('series_data')").fetchall()
+        }
+        for column, sql_type in (
+            ("observation_date", "DATE"),
+            ("release_at", "TIMESTAMP"),
+            ("available_at", "TIMESTAMP"),
+        ):
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE series_data ADD COLUMN {column} {sql_type}")
 
     def close(self) -> None:
         self.conn.close()
@@ -80,16 +99,41 @@ class DuckDBStore:
         """
         if canonical.empty:
             return 0
-        df = canonical[["series_id", "date", "value", "source", "source_file",
-                        "import_time", "file_hash"]].copy()
+        df = canonical.copy()
+        if "observation_date" not in df.columns:
+            df["observation_date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        if "release_at" not in df.columns:
+            df["release_at"] = pd.NaT
+        if "available_at" not in df.columns:
+            df["available_at"] = pd.NaT
+        columns = [
+            "series_id", "date", "value", "source", "source_file",
+            "import_time", "file_hash", "observation_date", "release_at",
+            "available_at",
+        ]
+        df = df[columns].copy()
         df["date"] = pd.to_datetime(df["date"]).dt.date
+        df["observation_date"] = pd.to_datetime(
+            df["observation_date"], errors="coerce"
+        ).dt.date
         df["import_time"] = pd.to_datetime(df["import_time"])
+        df["release_at"] = pd.to_datetime(
+            df["release_at"], errors="coerce", utc=True
+        ).dt.tz_localize(None)
+        df["available_at"] = pd.to_datetime(
+            df["available_at"], errors="coerce", utc=True
+        ).dt.tz_localize(None)
         self.conn.register("df_new", df)
         self.conn.execute(
             "DELETE FROM series_data AS old USING df_new AS new "
             "WHERE old.series_id = new.series_id AND old.date = new.date"
         )
-        self.conn.execute("INSERT INTO series_data SELECT * FROM df_new")
+        self.conn.execute(
+            "INSERT INTO series_data (series_id, date, value, source, source_file, "
+            "import_time, file_hash, observation_date, release_at, available_at) "
+            "SELECT series_id, date, value, source, source_file, import_time, "
+            "file_hash, observation_date, release_at, available_at FROM df_new"
+        )
         self.conn.unregister("df_new")
         return len(df)
 

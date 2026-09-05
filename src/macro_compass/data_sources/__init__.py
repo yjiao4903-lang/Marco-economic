@@ -27,9 +27,17 @@ from macro_compass.data_sources.base import (
 from macro_compass.data_sources.registry import (
     AdapterRegistry,
     DataSourcesConfig,
+    DerivedSeriesSpec,
     ProviderSpec,
     SeriesSource,
     load_data_sources_config,
+)
+from macro_compass.data_sources.derived import (
+    DerivedSeriesError,
+    derive_cn_dr007_spread,
+    derive_configured_series,
+    derive_difference,
+    derive_us_10y2y_spread,
 )
 from macro_compass.data_sources.updater import (
     FetchOutcome,
@@ -48,9 +56,15 @@ __all__ = [
     "ProviderUnavailable",
     "AdapterRegistry",
     "DataSourcesConfig",
+    "DerivedSeriesSpec",
     "ProviderSpec",
     "SeriesSource",
     "load_data_sources_config",
+    "DerivedSeriesError",
+    "derive_cn_dr007_spread",
+    "derive_configured_series",
+    "derive_difference",
+    "derive_us_10y2y_spread",
     "FetchOutcome",
     "UpdateReport",
     "load_fetch_state",

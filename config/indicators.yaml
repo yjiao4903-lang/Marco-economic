@@ -216,7 +216,30 @@ US_REAL_YIELD_10Y:
   weight: 1.0
   enabled: true
 
-# Independent Wind series; intentionally not referenced by signals/assets.
+# W1 external macro inputs.  These are distinct from US_REAL_YIELD_10Y and
+# keep the raw source definition (claims count / core CPI index level).
+US_INITIAL_CLAIMS:
+  name: 美国首次申请失业救济人数
+  category: macro
+  factor: growth
+  frequency: weekly
+  unit: persons
+  direction: negative
+  weight: 1.0
+  enabled: true
+
+US_CORE_CPI:
+  name: 美国核心CPI指数
+  category: macro
+  factor: inflation
+  frequency: monthly
+  unit: index
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+# Existing independent nominal 10Y series; W1 consolidates its automated
+# provider route without creating a second canonical 10Y id.
 US_TREASURY_NOMINAL_YIELD_10Y:
   name: 美国10年期名义国债收益率
   category: macro
@@ -226,6 +249,26 @@ US_TREASURY_NOMINAL_YIELD_10Y:
   direction: positive
   weight: 1.0
   enabled: true
+
+US_TREASURY_NOMINAL_YIELD_2Y:
+  name: 美国2年期名义国债收益率
+  category: macro
+  factor: global_financial
+  frequency: daily
+  unit: percent
+  direction: positive
+  weight: 1.0
+  enabled: true
+
+US_10Y2Y_SPREAD:
+  name: 美国10年-2年期国债收益率利差
+  category: macro
+  factor: global_financial
+  frequency: daily
+  unit: percent
+  weight: 1.0
+  # Diagnostic only in W1; no short-cycle trigger or automatic allocation use.
+  enabled: false
 
 USD_BROAD:
   name: 美元广义指数
@@ -336,11 +379,21 @@ CN_POLICY_RATE_7D:
   name: 7天逆回购政策利率
   category: macro
   factor: domestic_financial
-  frequency: monthly
+  frequency: daily
   unit: percent
   direction: negative
   weight: 1.0
   enabled: true
+
+CN_DR007_SPREAD:
+  name: DR007-7天政策利率利差
+  category: macro
+  factor: domestic_financial
+  frequency: daily
+  unit: percent
+  weight: 1.0
+  # Liquidity / policy diagnostic only; it does not alter signal or weights.
+  enabled: false
 
 CN_TSF_TOTAL:
   name: 社会融资规模增量

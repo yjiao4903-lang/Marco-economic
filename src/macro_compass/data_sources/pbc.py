@@ -23,6 +23,7 @@ from macro_compass.data_sources.base import (
     FetchError,
     build_canonical_frame,
     http_get,
+    temporal_metadata_for_spec,
 )
 
 LPR_LISTING_URL = (
@@ -303,9 +304,11 @@ class PbcAdapter(DataSourceAdapter):
         for date, rate in observations:
             seen[date] = rate  # later announcements win per date
         dates = sorted(seen)
+        date_values = [d.date() for d in dates]
+        temporal = temporal_metadata_for_spec(spec, date_values)
         return build_canonical_frame(
             series_id,
-            [d.date() for d in dates],
+            date_values,
             [seen[d] for d in dates],
             provider=self.provider_id,
             source_file=listing_url,
@@ -313,6 +316,7 @@ class PbcAdapter(DataSourceAdapter):
             unit="%",
             frequency=spec.frequency,
             category=spec.category,
+            **temporal,
         )
 
     def _fetch_private_tsf_yoy(self, series_id, spec) -> pd.DataFrame:

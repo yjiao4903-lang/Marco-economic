@@ -37,6 +37,7 @@ from macro_compass.data_sources.base import (
     FetchError,
     build_canonical_frame,
     http_get,
+    temporal_metadata_for_spec,
 )
 
 LISTING_URL = "https://www.stats.gov.cn/sj/zxfb/"
@@ -51,6 +52,9 @@ _TITLE_PATTERNS = {
 }
 
 _NEWORDERS_RE = re.compile(r"新订单指数为\s*(\d+(?:\.\d+)?)\s*%")
+_PMI_HEADLINE_RE = re.compile(
+    r"(?<!非)制造业PMI\s*(?:为|是)\s*(\d+(?:\.\d+)?)\s*%"
+)
 _INPUT_PRICE_TABLE_RE = re.compile(
     r"购进价格[\s\S]{0,200}?(?:\d{4}年\d{1,2}月\s+(?:\d+\.\d+\s*)+)+"
 )
@@ -70,6 +74,7 @@ _CORE_TABLE_ROW_RE = re.compile(
 )
 
 _PROVIDER_CODES = {
+    "PMI_HEADLINE": "PMI",
     "PMI_NEW_ORDERS": "PMI",
     "PMI_INPUT_PRICE": "PMI",
     "PROPERTY_SALES_AREA": "PROPERTY",
@@ -114,6 +119,18 @@ def parse_pmi_new_orders(title: str, text: str) -> list[tuple[pd.Timestamp, floa
     if not title_match:
         raise FetchError(f"NBS PMI article title not parseable: {title!r}")
     match = _NEWORDERS_RE.search(text)
+    if not match:
+        return []
+    date = _month_end(int(title_match.group("year")), int(title_match.group("month")))
+    return [(date, float(match.group(1)))]
+
+
+def parse_pmi_headline(title: str, text: str) -> list[tuple[pd.Timestamp, float]]:
+    """Manufacturing PMI headline index for the article's reference month."""
+    title_match = _TITLE_PATTERNS["PMI"].search(title)
+    if not title_match:
+        raise FetchError(f"NBS PMI article title not parseable: {title!r}")
+    match = _PMI_HEADLINE_RE.search(text)
     if not match:
         return []
     date = _month_end(int(title_match.group("year")), int(title_match.group("month")))
@@ -211,6 +228,7 @@ class NbsAdapter(DataSourceAdapter):
 
         dates = [obs[0].date() for obs in observations]
         values = [obs[1] for obs in observations]
+        temporal = temporal_metadata_for_spec(spec, dates)
         return build_canonical_frame(
             series_id,
             dates,
@@ -221,6 +239,7 @@ class NbsAdapter(DataSourceAdapter):
             unit="%",
             frequency=spec.frequency,
             category=spec.category,
+            **temporal,
         )
 
     def _collect(self, kind: str, series_id: str) -> list[tuple[pd.Timestamp, float]]:
@@ -246,6 +265,8 @@ class NbsAdapter(DataSourceAdapter):
                 )
                 if kind == "PMI" and series_id == "CHN_PMI_INPUT_PRICE":
                     observations.extend(parse_pmi_input_price(article))
+                elif kind == "PMI" and series_id == "CN_PMI":
+                    observations.extend(parse_pmi_headline(title, article))
                 elif kind == "PMI" and series_id == "CHN_PMI_NEW_ORDERS":
                     observations.extend(parse_pmi_new_orders(title, article))
                 elif kind == "PROPERTY":

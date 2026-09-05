@@ -20,6 +20,7 @@ from macro_compass.data_sources.base import (
     FetchError,
     ProviderUnavailable,
     build_canonical_frame,
+    temporal_metadata_for_spec,
 )
 
 _DATE_CANDIDATES = ("日期", "date", "DATE")
@@ -76,14 +77,50 @@ def _month_cn(text: str):
     return pd.Timestamp(year=int(match.group(1)), month=int(match.group(2)), day=1) + pd.offsets.MonthEnd(0)
 
 
+def parse_monthly_macro_frame(
+    frame: pd.DataFrame,
+    code: str,
+    *,
+    value_column: str,
+    date_column: str = "月份",
+) -> tuple[list, list]:
+    """Parse one AKShare monthly macro table with an explicit schema gate."""
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
+        raise FetchError(f"AKShare macro route '{code}' returned an empty frame")
+    missing = [
+        column for column in (date_column, value_column) if column not in frame.columns
+    ]
+    if missing:
+        raise FetchError(
+            f"AKShare macro route '{code}' missing column(s): {missing}; "
+            f"received {list(frame.columns)}"
+        )
+    dates = [_month_cn(value) for value in frame[date_column]]
+    values = pd.to_numeric(frame[value_column], errors="coerce")
+    pairs = [
+        (date_value, value)
+        for date_value, value in zip(dates, values)
+        if date_value is not None and pd.notna(value)
+    ]
+    if not pairs:
+        raise FetchError(f"AKShare macro route '{code}' returned no usable rows")
+    pairs.sort()
+    return (
+        [
+            date_value.date() if hasattr(date_value, "date") else date_value
+            for date_value, _ in pairs
+        ],
+        [float(value) for _, value in pairs],
+    )
+
+
 def fetch_macro_series(akshare, code: str) -> tuple[list, list]:
     """Dispatch on the macro routing code (provider_code) and return
     (month-end dates, values)."""
     if code == "CN_PPI_YOY":
-        frame = akshare.macro_china_ppi()
-        col = "当月同比增长"
-        dates = [_month_cn(v) for v in frame["月份"]]
-        values = pd.to_numeric(frame[col], errors="coerce")
+        return parse_monthly_macro_frame(
+            akshare.macro_china_ppi(), code, value_column="当月同比增长"
+        )
     elif code == "CN_M2_YOY":
         frame = akshare.macro_china_money_supply()
         col = "货币和准货币(M2)-同比增长"
@@ -185,6 +222,11 @@ class AkshareAdapter(DataSourceAdapter):
                 keep = [i for i, d in enumerate(dates) if d >= start]
                 dates = [dates[i] for i in keep]
                 values = [values[i] for i in keep]
+            if not dates:
+                raise FetchError(
+                    f"AKShare macro route '{code}' returned no rows after {start_date}"
+                )
+            temporal = temporal_metadata_for_spec(spec, dates)
             return build_canonical_frame(
                 series_id,
                 dates,
@@ -195,6 +237,7 @@ class AkshareAdapter(DataSourceAdapter):
                 unit="",
                 frequency=spec.frequency,
                 category=spec.category,
+                **temporal,
             )
 
         start_str = pd.Timestamp(start_date).strftime("%Y%m%d") if start_date is not None \

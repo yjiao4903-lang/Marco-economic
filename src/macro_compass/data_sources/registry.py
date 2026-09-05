@@ -66,6 +66,11 @@ class FreshnessMeta(BaseModel):
 
     expected_release_lag_days: Optional[int] = Field(default=None, ge=0)
     acceptable_delay_days: Optional[int] = Field(default=None, ge=0)
+    # ``end_of_day_after_lag`` is a conservative, configured availability
+    # boundary.  It is deliberately distinct from an observed exact release
+    # timestamp; ``unknown`` keeps legacy routes on the old schema surface.
+    availability_rule: Literal["unknown", "end_of_day_after_lag"] = "unknown"
+    publication_timezone: str = "UTC"
 
 
 class SeriesSource(BaseModel):
@@ -92,6 +97,22 @@ class SeriesSource(BaseModel):
     parser_contract: str = "canonical date,value rows"
 
 
+class DerivedSeriesSpec(BaseModel):
+    """A pure, diagnostic derivation from already-routed source legs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    legs: list[str] = Field(default_factory=list)
+    operation: Literal["difference"] = "difference"
+    formula: str
+    unit: str
+    frequency: Literal["monthly", "weekly", "daily", "quarterly", "yearly"]
+    category: Literal["macro", "market"]
+    owner: str = "MARCO"
+    role: str
+    production_enabled: bool = False
+
+
 class DataSourcesConfig(BaseModel):
     """Whole data_sources.yaml document."""
 
@@ -99,6 +120,7 @@ class DataSourcesConfig(BaseModel):
 
     providers: dict[str, ProviderSpec]
     series: dict[str, SeriesSource]
+    derived_series: dict[str, DerivedSeriesSpec] = Field(default_factory=dict)
     overlap_days: int = Field(default=45, ge=0)
 
     def chain_for(self, series_id: str) -> list[str]:
@@ -146,6 +168,12 @@ def load_data_sources_config(path, indicator_registry: dict | None = None) -> Da
     except ValidationError as exc:
         raise ConfigError(f"{path.name}: invalid data sources config:\n{exc}") from exc
 
+    overlap = set(config.series).intersection(config.derived_series)
+    if overlap:
+        raise ConfigError(
+            f"{path.name}: ids cannot be both routed and derived: {sorted(overlap)}"
+        )
+
     for series_id, spec in config.series.items():
         for provider_id in config.chain_for(series_id):
             if provider_id not in config.providers:
@@ -165,6 +193,44 @@ def load_data_sources_config(path, indicator_registry: dict | None = None) -> Da
                 raise ConfigError(
                     f"{path.name}: adapter class '{adapter_cls.__name__}' is not a "
                     f"DataSourceAdapter"
+                )
+
+    for series_id, spec in config.derived_series.items():
+        if indicator_registry is not None and series_id not in indicator_registry:
+            raise ConfigError(
+                f"{path.name}: derived series '{series_id}' is not registered in "
+                "indicators.yaml"
+            )
+        if len(spec.legs) != 2 or len(set(spec.legs)) != 2:
+            raise ConfigError(
+                f"{path.name}: derived series '{series_id}' must declare exactly "
+                "two distinct source legs"
+            )
+        missing_legs = [leg for leg in spec.legs if leg not in config.series]
+        if missing_legs:
+            raise ConfigError(
+                f"{path.name}: derived series '{series_id}' references unrouted "
+                f"leg(s): {missing_legs}"
+            )
+        indicator = indicator_registry.get(series_id) if indicator_registry else None
+        if indicator is not None:
+            mismatches = []
+            if indicator.frequency != spec.frequency:
+                mismatches.append(f"frequency={indicator.frequency!r}/{spec.frequency!r}")
+            if indicator.unit != spec.unit:
+                mismatches.append(f"unit={indicator.unit!r}/{spec.unit!r}")
+            if indicator.category != spec.category:
+                mismatches.append(f"category={indicator.category!r}/{spec.category!r}")
+            if mismatches:
+                raise ConfigError(
+                    f"{path.name}: derived series '{series_id}' metadata mismatch: "
+                    + ", ".join(mismatches)
+                )
+            leg_units = [indicator_registry.get(leg).unit for leg in spec.legs if leg in indicator_registry]
+            if len(leg_units) == 2 and len(set(leg_units)) != 1:
+                raise ConfigError(
+                    f"{path.name}: derived series '{series_id}' has unit-mismatched legs: "
+                    f"{dict(zip(spec.legs, leg_units))}"
                 )
     return config
 

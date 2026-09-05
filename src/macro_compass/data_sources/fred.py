@@ -22,6 +22,7 @@ from macro_compass.data_sources.base import (
     build_canonical_frame,
     build_url,
     http_get,
+    temporal_metadata_for_spec,
 )
 
 FREDGRAPH_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
@@ -162,6 +163,7 @@ class FredAdapter(DataSourceAdapter):
             dates, values = parse_fred_csv(text, code)
         if not dates:
             raise FetchError(f"FRED returned no usable observations for '{code}'")
+        temporal = temporal_metadata_for_spec(spec, dates)
         return build_canonical_frame(
             series_id,
             dates,
@@ -172,4 +174,5 @@ class FredAdapter(DataSourceAdapter):
             unit="",
             frequency=spec.frequency,
             category=spec.category,
+            **temporal,
         )

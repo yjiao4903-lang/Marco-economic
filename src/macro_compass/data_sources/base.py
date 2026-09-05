@@ -29,12 +29,18 @@ import ssl
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
 from macro_compass.ingestion.normalizer import CANONICAL_COLUMNS
 
 CANONICAL_REQUIRED = ("series_id", "date", "value", "category")
+# Optional provenance columns used by sources whose publication timing is
+# explicitly configured.  The legacy Wind normalizer keeps the original
+# CANONICAL_COLUMNS surface; source adapters opt into these fields so existing
+# contract consumers are not widened by this task.
+TEMPORAL_COLUMNS = ("observation_date", "release_at", "available_at")
 
 
 class FetchStatus(str, Enum):
@@ -180,22 +186,69 @@ def build_canonical_frame(
     frequency: str,
     category: str,
     import_time: pd.Timestamp | None = None,
+    observation_dates=None,
+    release_at=None,
+    available_at=None,
 ) -> pd.DataFrame:
     """Assemble adapter output into the canonical long-format layout.
 
     Drops rows without a parseable date or value and returns rows sorted by
-    date with exactly the canonical column order.
+    date with exactly the canonical column order.  When temporal provenance
+    is supplied, all three temporal columns are emitted and invalid temporal
+    rows are dropped as a fail-closed boundary.
     """
     import_time = import_time or pd.Timestamp.now()
+
+    date_values = list(dates)
+    value_values = list(values)
+    if len(date_values) != len(value_values):
+        raise ValueError(
+            f"dates and values must have equal length, got {len(date_values)} and "
+            f"{len(value_values)}"
+        )
+
+    temporal_enabled = any(
+        value is not None for value in (observation_dates, release_at, available_at)
+    )
+    if temporal_enabled and (release_at is None or available_at is None):
+        raise ValueError(
+            "observation provenance requires both release_at and available_at"
+        )
+
+    def _aligned(values_arg, default, label):
+        values_list = list(default if values_arg is None else values_arg)
+        if len(values_list) != len(date_values):
+            raise ValueError(
+                f"{label} must have length {len(date_values)}, got {len(values_list)}"
+            )
+        return values_list
 
     frame = pd.DataFrame(
         {
             "series_id": series_id,
-            "date": pd.to_datetime(pd.Series(list(dates)), errors="coerce"),
-            "value": pd.to_numeric(pd.Series(list(values), dtype="object"), errors="coerce"),
+            "date": pd.to_datetime(pd.Series(date_values), errors="coerce"),
+            "value": pd.to_numeric(pd.Series(value_values, dtype="object"), errors="coerce"),
         }
     )
+    if temporal_enabled:
+        frame["observation_date"] = pd.to_datetime(
+            pd.Series(_aligned(observation_dates, date_values, "observation_dates")),
+            errors="coerce",
+        )
+        frame["release_at"] = pd.to_datetime(
+            pd.Series(_aligned(release_at, [None] * len(date_values), "release_at")),
+            errors="coerce",
+            utc=True,
+        )
+        frame["available_at"] = pd.to_datetime(
+            pd.Series(_aligned(available_at, [None] * len(date_values), "available_at")),
+            errors="coerce",
+            utc=True,
+        )
+
     frame = frame.dropna(subset=["date", "value"])
+    if temporal_enabled:
+        frame = frame.dropna(subset=list(TEMPORAL_COLUMNS))
     if frame.empty:
         return frame
 
@@ -210,4 +263,61 @@ def build_canonical_frame(
     frame["category"] = category
     frame["file_hash"] = None
 
-    return frame[CANONICAL_COLUMNS].sort_values("date").reset_index(drop=True)
+    columns = list(CANONICAL_COLUMNS)
+    if temporal_enabled:
+        columns.extend(TEMPORAL_COLUMNS)
+    return frame[columns].sort_values("date").reset_index(drop=True)
+
+
+def temporal_metadata_for_spec(spec, dates) -> dict:
+    """Build conservative publication metadata from an explicit source rule.
+
+    The project does not infer release timing from an observation date.  A
+    configured ``end_of_day_after_lag`` rule means the row is considered
+    available only at the end of the configured publication day in the
+    configured IANA timezone.  This is a deterministic safety boundary, not
+    a claim that the exact source release timestamp was observed.
+    """
+    freshness = getattr(spec, "freshness", None)
+    rule = getattr(freshness, "availability_rule", "unknown")
+    if rule in (None, "unknown"):
+        return {}
+    if rule != "end_of_day_after_lag":
+        raise FetchError(f"unsupported availability rule: {rule!r}")
+
+    lag_days = getattr(freshness, "expected_release_lag_days", None)
+    if lag_days is None:
+        raise FetchError(
+            "availability rule end_of_day_after_lag requires expected_release_lag_days"
+        )
+    timezone_name = getattr(freshness, "publication_timezone", "UTC")
+    try:
+        timezone = ZoneInfo(str(timezone_name))
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise FetchError(f"invalid publication timezone: {timezone_name!r}") from exc
+
+    observation_values = list(dates)
+    observation_dates = []
+    boundaries = []
+    for raw_date in observation_values:
+        try:
+            timestamp = pd.Timestamp(raw_date)
+        except (TypeError, ValueError) as exc:
+            raise FetchError(f"unparseable observation date: {raw_date!r}") from exc
+        if pd.isna(timestamp):
+            raise FetchError(f"unparseable observation date: {raw_date!r}")
+        observation_date = timestamp.date()
+        observation_dates.append(observation_date)
+        local_start = pd.Timestamp(observation_date).tz_localize(timezone)
+        local_end = (
+            local_start
+            + pd.Timedelta(days=int(lag_days) + 1)
+            - pd.Timedelta(nanoseconds=1)
+        )
+        boundaries.append(local_end.tz_convert("UTC"))
+
+    return {
+        "observation_dates": observation_dates,
+        "release_at": boundaries,
+        "available_at": boundaries.copy(),
+    }
