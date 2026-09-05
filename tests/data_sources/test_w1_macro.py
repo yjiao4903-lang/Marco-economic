@@ -10,11 +10,7 @@ import pytest
 from macro_compass import paths
 from macro_compass.config import IndicatorConfig
 from macro_compass.data_sources.akshare_source import parse_monthly_macro_frame
-from macro_compass.data_sources.base import (
-    FetchError,
-    build_canonical_frame,
-    temporal_metadata_for_spec,
-)
+from macro_compass.data_sources.base import FetchError, build_canonical_frame
 from macro_compass.data_sources.derived import (
     DerivedSeriesError,
     derive_cn_dr007_spread,
@@ -22,6 +18,7 @@ from macro_compass.data_sources.derived import (
 )
 from macro_compass.data_sources.fred import FredAdapter
 from macro_compass.data_sources.nbs import parse_pmi_headline
+from macro_compass.data_sources.pit_release import actual_release_metadata
 from macro_compass.data_sources.registry import (
     FreshnessMeta,
     ProviderSpec,
@@ -58,6 +55,20 @@ def _temporal_frame(
         observation_dates=dates,
         release_at=available,
         available_at=available,
+    )
+
+
+def _pit_spec(code: str, *, frequency: str = "monthly") -> SeriesSource:
+    return SeriesSource(
+        primary="fixture",
+        provider_code=code,
+        frequency=frequency,
+        category="macro",
+        freshness=FreshnessMeta(
+            expected_release_lag_days=31,
+            availability_rule="end_of_day_after_lag",
+            publication_timezone="UTC",
+        ),
     )
 
 
@@ -114,37 +125,30 @@ def test_ppi_parser_rejects_malformed_access_layer_schema():
         )
 
 
-def test_temporal_metadata_is_explicit_and_conservative():
-    spec = SeriesSource(
-        primary="fred",
-        provider_code="ICSA",
-        frequency="weekly",
-        category="macro",
-        freshness=FreshnessMeta(
-            expected_release_lag_days=1,
-            availability_rule="end_of_day_after_lag",
-            publication_timezone="America/New_York",
-        ),
+def test_actual_release_metadata_requires_calendar_evidence():
+    spec = _pit_spec("ICSA", frequency="weekly")
+    with pytest.raises(FetchError, match="actual release-calendar evidence required"):
+        actual_release_metadata(spec, [date(2026, 8, 1)])
+
+    metadata = actual_release_metadata(
+        spec,
+        [date(2026, 8, 1)],
+        release_at=[pd.Timestamp("2026-08-06T08:30:00-04:00")],
     )
-    metadata = temporal_metadata_for_spec(spec, [date(2026, 8, 3)])
     frame = build_canonical_frame(
         "US_INITIAL_CLAIMS",
-        [date(2026, 8, 3)],
+        [date(2026, 8, 1)],
         [200000],
-        provider="fred",
-        source_file="fred://ICSA",
+        provider="fixture",
+        source_file="fixture://dol-release-calendar",
         series_name="claims",
         unit="persons",
         frequency="weekly",
         category="macro",
         **metadata,
     )
-    assert {"observation_date", "release_at", "available_at"} <= set(frame.columns)
-    assert frame.loc[0, "observation_date"] == pd.Timestamp("2026-08-03")
-    assert frame.loc[0, "available_at"].tzinfo is not None
-    assert frame.loc[0, "available_at"] == pd.Timestamp(
-        "2026-08-05T03:59:59.999999999Z"
-    )
+    assert frame.loc[0, "release_at"] == pd.Timestamp("2026-08-06T12:30:00Z")
+    assert frame.loc[0, "available_at"] == frame.loc[0, "release_at"]
 
     registry = {
         "US_INITIAL_CLAIMS": IndicatorConfig(
@@ -152,6 +156,57 @@ def test_temporal_metadata_is_explicit_and_conservative():
         )
     }
     assert validate_canonical(frame, registry).passed
+
+
+def test_core_cpi_reference_month_arithmetic_cannot_create_release_at():
+    spec = _pit_spec("CPILFESL")
+    with pytest.raises(FetchError, match="observation-date lag cannot populate"):
+        actual_release_metadata(spec, [date(2026, 7, 31)])
+
+    metadata = actual_release_metadata(
+        spec,
+        [date(2026, 7, 31)],
+        release_at=[pd.Timestamp("2026-08-12T08:30:00-04:00")],
+        available_at=[pd.Timestamp("2026-08-12T08:30:00-04:00")],
+    )
+    assert metadata["observation_dates"] == [date(2026, 7, 31)]
+    assert metadata["release_at"] == [pd.Timestamp("2026-08-12T12:30:00Z")]
+
+
+def test_icsa_holiday_shift_is_explicit_not_observation_date_inferred():
+    spec = _pit_spec("ICSA", frequency="weekly")
+    observation = date(2026, 12, 26)
+    holiday_shifted_release = pd.Timestamp("2026-12-31T08:30:00-05:00")
+    metadata = actual_release_metadata(
+        spec,
+        [observation],
+        release_at=[holiday_shifted_release],
+    )
+    assert metadata["release_at"] == [pd.Timestamp("2026-12-31T13:30:00Z")]
+
+
+def test_cn_pmi_and_ppi_require_actual_nbs_calendar_timestamp():
+    pmi = _pit_spec("PMI_HEADLINE")
+    ppi = _pit_spec("CN_PPI_YOY")
+    for spec, observation in (
+        (pmi, date(2026, 7, 31)),
+        (ppi, date(2026, 7, 31)),
+    ):
+        with pytest.raises(FetchError, match="actual release-calendar evidence required"):
+            actual_release_metadata(spec, [observation])
+
+    pmi_metadata = actual_release_metadata(
+        pmi,
+        [date(2026, 7, 31)],
+        release_at=[pd.Timestamp("2026-07-31T09:30:00+08:00")],
+    )
+    ppi_metadata = actual_release_metadata(
+        ppi,
+        [date(2026, 7, 31)],
+        release_at=[pd.Timestamp("2026-08-09T09:30:00+08:00")],
+    )
+    assert pmi_metadata["release_at"] == [pd.Timestamp("2026-07-31T01:30:00Z")]
+    assert ppi_metadata["release_at"] == [pd.Timestamp("2026-08-09T01:30:00Z")]
 
 
 def test_temporal_validator_rejects_partial_or_naive_metadata():
@@ -178,7 +233,7 @@ def test_temporal_validator_rejects_partial_or_naive_metadata():
     assert any("temporal provenance is partial" in error for error in report.errors)
 
 
-def test_fred_w1_adapter_emits_mapping_and_temporal_metadata(monkeypatch):
+def test_fred_w1_adapter_fails_closed_without_release_calendar(monkeypatch):
     provider = ProviderSpec(module="fred", adapter_class="FredAdapter")
     series = SeriesSource(
         primary="fred",
@@ -201,11 +256,9 @@ def test_fred_w1_adapter_emits_mapping_and_temporal_metadata(monkeypatch):
     monkeypatch.delenv("FRED_API_KEY", raising=False)
     monkeypatch.setattr("macro_compass.data_sources.fred.http_get", fake_http_get)
     adapter = FredAdapter(provider, {"US_INITIAL_CLAIMS": series}, provider_id="fred")
-    frame = adapter.fetch("US_INITIAL_CLAIMS")
-
+    with pytest.raises(FetchError, match="actual release-calendar evidence required"):
+        adapter.fetch("US_INITIAL_CLAIMS")
     assert "id=ICSA" in captured["url"]
-    assert frame.loc[0, "value"] == 200000.0
-    assert frame.loc[0, "available_at"].tzinfo is not None
 
 
 def test_cn_spread_uses_latest_policy_published_by_cutoff_not_future_value():
@@ -287,8 +340,14 @@ def test_canonical_parquet_accepts_legacy_rows_with_new_temporal_rows(data_env):
         category="macro",
     )
     append_canonical(legacy)
-    append_canonical(_temporal_frame("US_TREASURY_NOMINAL_YIELD_2Y", [date(2026, 8, 3)], [3.5]))
+    append_canonical(
+        _temporal_frame("US_TREASURY_NOMINAL_YIELD_2Y", [date(2026, 8, 3)], [3.5])
+    )
     stored = read_canonical("macro")
-    temporal = stored.loc[stored["series_id"].eq("US_TREASURY_NOMINAL_YIELD_2Y")].iloc[0]
+    temporal = stored.loc[
+        stored["series_id"].eq("US_TREASURY_NOMINAL_YIELD_2Y")
+    ].iloc[0]
     assert temporal["available_at"].tzinfo is not None
-    assert pd.isna(stored.loc[stored["series_id"].eq("LEGACY"), "available_at"]).all()
+    assert pd.isna(
+        stored.loc[stored["series_id"].eq("LEGACY"), "available_at"]
+    ).all()
