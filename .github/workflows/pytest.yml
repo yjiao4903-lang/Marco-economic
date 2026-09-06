@@ -1,11 +1,27 @@
 name: pytest
 
+# Gate-Driven CI v1:
+# - docs-only 修改不触发代码全量测试。
+# - 同一 PR 连续 push 时，过时 head 的 run 自动取消。
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
